@@ -5,8 +5,18 @@ from langgraph_sdk.auth.types import StudioUser
 from supabase import create_client, Client
 from typing import Optional, Any
 
-supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_KEY")
+from dotenv import load_dotenv
+load_dotenv()
+
+
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_KEY")
+supabase: Optional[Client] = None
+
+print("Supabase URL:", supabase_url)
+
+if supabase_url and supabase_key:
+    supabase = create_client(supabase_url, supabase_key)
 supabase: Optional[Client] = None
 
 if supabase_url and supabase_key:
@@ -14,14 +24,15 @@ if supabase_url and supabase_key:
 
 # The "Auth" object is a container that LangGraph will use to mark our authentication function
 auth = Auth()
-
+print("Supabase client initialized:", supabase is not None) 
+print(auth)
 
 # The `authenticate` decorator tells LangGraph to call this function as middleware
 # for every request. This will determine whether the request is allowed or not
 @auth.authenticate
 async def get_current_user(authorization: str | None) -> Auth.types.MinimalUserDict:
     """Check if the user's JWT token is valid using Supabase."""
-
+    print("Authorization header:", authorization)
     # Ensure we have authorization header
     if not authorization:
         raise Auth.exceptions.HTTPException(
