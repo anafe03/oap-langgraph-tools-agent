@@ -92,11 +92,11 @@ class GraphConfigPydantic(BaseModel):
 
 
 
-from tools_agent.utils.tools import make_listing, syndicate_listing, market_trends
+from tools_agent.utils.tools import make_listing, syndicate_listing, market_trends, generate_caption_from_image
 
 async def graph(config: RunnableConfig):
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
-    tools = [make_listing, syndicate_listing, market_trends]  # ← Add this line!
+    tools = [make_listing, syndicate_listing, market_trends, generate_caption_from_image]  # ← Add this line!
 
     # RAG tools (optional)
     supabase_token = config.get("configurable", {}).get("x-supabase-access-token")

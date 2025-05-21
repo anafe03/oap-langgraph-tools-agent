@@ -38,53 +38,70 @@ import os
 import aiohttp
 from typing import Annotated
 from langchain_core.tools import ToolException
+import os
+import aiohttp
+from typing import Annotated
+from langchain_core.tools import ToolException
+from dotenv import load_dotenv
 
-# Load Tavily API key from environment variables
+load_dotenv()  # If you're using a .env file
+
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-
 if not TAVILY_API_KEY:
     raise ValueError("TAVILY_API_KEY is not set in the environment variables.")
+
+
+import os
+import aiohttp
+from typing import Annotated
+from langchain_core.tools import ToolException
+
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 async def market_trends(
     location: Annotated[str, "The location (city, state, or zip code) to fetch market trends for"]
 ) -> dict:
     """
-    Fetch local market research data using the Tavily API.
-
-    Args:
-        location: The location to fetch market trends for (e.g., city, state, or zip code).
-
-    Returns:
-        A dictionary containing market trends data, including rent and sales information.
-
-    Raises:
-        ToolException: If the API request fails or returns an error.
+    Fetch local market research data using the Tavily search API.
     """
-    url = f"https://api.tavily.com/v1/market-trends?location={location}"
-
+    url = "https://api.tavily.com/search"
     headers = {
         "Authorization": f"Bearer {TAVILY_API_KEY}",
         "Content-Type": "application/json",
     }
+    payload = {
+        "query": f"real estate market trends {location} 2024",
+        "max_results": 5,
+    }
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
+            async with session.post(url, headers=headers, json=payload) as response:
                 if response.status != 200:
                     error_message = await response.text()
                     raise ToolException(
                         f"Failed to fetch market trends for {location}. "
                         f"API responded with status {response.status}: {error_message}"
                     )
-
                 data = await response.json()
+                # Optionally, extract only titles/snippets/links for brevity
+                results = [
+                    {
+                        "title": item.get("title", ""),
+                        "url": item.get("url", ""),
+                        "snippet": item.get("snippet", ""),
+                    }
+                    for item in data.get("results", [])
+                ]
+                summary = data.get("summary", "")
                 return {
                     "location": location,
-                    "rent_data": data.get("rent_data", {}),
-                    "sales_data": data.get("sales_data", {}),
+                    "summary": summary,
+                    "top_results": results,
                 }
     except Exception as e:
-        raise ToolException(f"An error occurred while fetching market trends: {str(e)}")
+        raise ToolException(f"An error occurred fetching market trends: {str(e)}")
+
 
 
 async def syndicate_listing(
@@ -276,3 +293,31 @@ async def create_rag_tool(rag_url: str, collection_id: str, access_token: str):
 
 
 
+
+
+
+
+
+import os
+import httpx
+
+AZURE_ENDPOINT = os.getenv("AZURE_CV_ENDPOINT")  # e.g. "https://<your-resource-name>.cognitiveservices.azure.com/"
+AZURE_KEY = os.getenv("AZURE_CV_KEY")
+
+async def generate_caption_from_image(image_url: str) -> str:
+    """Generate a natural language caption for an image using Azure Computer Vision API."""
+    endpoint = f"{AZURE_ENDPOINT}/vision/v3.2/describe"
+    headers = {
+        "Ocp-Apim-Subscription-Key": AZURE_KEY,
+        "Content-Type": "application/json",
+    }
+    data = {"url": image_url}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(endpoint, headers=headers, json=data, timeout=20)
+        response.raise_for_status()
+        result = response.json()
+        # The API returns a list of captions, pick the first and its confidence
+        caption = result.get("description", {}).get("captions", [{}])[0]
+        text = caption.get("text", "")
+        confidence = caption.get("confidence", 0)
+        return f"Caption: {text} (confidence: {confidence:.2f})" if text else "No caption generated."
