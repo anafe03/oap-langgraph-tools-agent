@@ -6,7 +6,87 @@ from langchain_core.tools import tool
 from typing import Annotated
 
 
+
+
+
+
+##TODO
+
+##MARKET Trends tools
+#pulls local rent sales data 
+
+#instant valuation tool pillls comps 
+
+#video tour maker
+#adds  captions music and call to action
+
+
+#Social Social Media Scheduler
+#Schedules auto-generated posts for Instagram, FB, X, TikTok, LinkedIn about the listing or product.
+
+##AI Lead Qualifier
+#Takes inbound email, form, or chat, and extracts intent, budget, and urgency.
+#Sends follow-ups or routes to human agent.
+
+##vesty needs access to calendar google calendar 
+
 #@tool(name="syndicate_listing", description="Send a completed FSBO listing to the MLS via API for broader exposure.")
+
+
+
+import os
+import aiohttp
+from typing import Annotated
+from langchain_core.tools import ToolException
+
+# Load Tavily API key from environment variables
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
+if not TAVILY_API_KEY:
+    raise ValueError("TAVILY_API_KEY is not set in the environment variables.")
+
+async def market_trends(
+    location: Annotated[str, "The location (city, state, or zip code) to fetch market trends for"]
+) -> dict:
+    """
+    Fetch local market research data using the Tavily API.
+
+    Args:
+        location: The location to fetch market trends for (e.g., city, state, or zip code).
+
+    Returns:
+        A dictionary containing market trends data, including rent and sales information.
+
+    Raises:
+        ToolException: If the API request fails or returns an error.
+    """
+    url = f"https://api.tavily.com/v1/market-trends?location={location}"
+
+    headers = {
+        "Authorization": f"Bearer {TAVILY_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status != 200:
+                    error_message = await response.text()
+                    raise ToolException(
+                        f"Failed to fetch market trends for {location}. "
+                        f"API responded with status {response.status}: {error_message}"
+                    )
+
+                data = await response.json()
+                return {
+                    "location": location,
+                    "rent_data": data.get("rent_data", {}),
+                    "sales_data": data.get("sales_data", {}),
+                }
+    except Exception as e:
+        raise ToolException(f"An error occurred while fetching market trends: {str(e)}")
+
+
 async def syndicate_listing(
     title: Annotated[str, "The listing title"],
     address: Annotated[str, "The property address"],
@@ -43,6 +123,7 @@ async def syndicate_listing(
         return f"❌ Failed to syndicate listing: {str(e)}"
     
  
+
 
 
 #@tool(name="make_listing", description="Create a FSBO property listing by gathering key details from the seller.")

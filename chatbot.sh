@@ -5,7 +5,7 @@
 # -----------------------------------
 
 BASE_URL="http://localhost:2024"
-TOKEN="eyJhbGciOiJIUzI1NiIsImtpZCI6IkdEejRHRFlVR2ludWE2YlAiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2dkbWR1cnphZWV6Y3Jncm10YWJ4LnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiJmMGE5MTZlYy1jYjZlLTQ3MzMtYTQzYy1hZDU4NDdlZDAxNmYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzQ3Nzg3MDQ2LCJpYXQiOjE3NDc3ODM0NDYsImVtYWlsIjoiYXVzdGlubmFmZUBhb2wuY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbF92ZXJpZmllZCI6dHJ1ZX0sInJvbGUiOiJhdXRoZW50aWNhdGVkIiwiYWFsIjoiYWFsMSIsImFtciI6W3sibWV0aG9kIjoicGFzc3dvcmQiLCJ0aW1lc3RhbXAiOjE3NDc3ODM0NDZ9XSwic2Vzc2lvbl9pZCI6ImE4OGNkODIwLWM0MTUtNGViYi04MzBjLWU5MDU1MjUwYzc2YyIsImlzX2Fub255bW91cyI6ZmFsc2V9.zvMmqST82nk1HHoZhTOuzZ0fNSsdfRBsYHkK4uL9lrc"
+TOKEN=$(node get-token.js | grep 'ACCESS TOKEN:' | awk '{print $3}') # Extract token from get-token.js output
 ASSISTANT_ID="e878fafe-dace-4935-99db-ffbe0cee5b6e"
 MODEL="openai:gpt-4o"
 USER_ID="f0a916ec-cb6e-4733-a43c-ad5847ed016f"
