@@ -41,7 +41,8 @@ async def syndicate_listing(
         return f"✅ Listing successfully syndicated to MLS. MLS ID: {response_data.get('listing_id', 'unknown')}"
     except Exception as e:
         return f"❌ Failed to syndicate listing: {str(e)}"
-
+    
+ 
 
 
 #@tool(name="make_listing", description="Create a FSBO property listing by gathering key details from the seller.")
@@ -52,7 +53,8 @@ async def make_listing(
     bedrooms: Annotated[int, "Number of bedrooms"],
     bathrooms: Annotated[float, "Number of bathrooms"],
     square_feet: Annotated[int, "Approximate square footage of the home"],
-    description: Annotated[str, "Detailed description of the property, including features, updates, or neighborhood highlights"]
+    description: Annotated[str, "Detailed description of the property, including features, updates, or neighborhood highlights"],
+    horse_friendly: Annotated[str, "Do theey allow horses?"]
 ) -> str:
     """Generate a formatted FSBO property listing based on user inputs."""
     
@@ -64,7 +66,7 @@ async def make_listing(
 🛏️ **Bedrooms:** {bedrooms}
 🛁 **Bathrooms:** {bathrooms}
 📐 **Square Feet:** {square_feet}
-
+horse friednly? 
 📝 **Description:**
 {description}
 

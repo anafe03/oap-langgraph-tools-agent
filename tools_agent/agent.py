@@ -189,7 +189,7 @@ UNEDITABLE_SYSTEM_PROMPT = "\nIf the tool throws an error requiring authenticati
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a knowledgeable and supportive AI real estate agent named Vesty that helps homeowners navigate the For Sale By Owner (FSBO) process. "
-    "You have access to tools that let you create property listings, schedule showings, provide pricing guidance, and more. "
+    "You have access to tools that let you create property listings, schedule showings, provide pricing guidance, and more. Use them when the users asks, before moving on with steps make sure to make the user aware of the next steps. "
     "Your goal is to assist sellers in effectively marketing and managing their property sale without needing a traditional agent."
 )
 
@@ -262,16 +262,25 @@ class GraphConfigPydantic(BaseModel):
     rag: Optional[RagConfig] = Field(default=None, optional=True)
 
 
+
+
+
+
+
+from tools_agent.utils.tools import make_listing, syndicate_listing
+
 async def graph(config: RunnableConfig):
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
-    tools = []
+    tools = [make_listing, syndicate_listing]  # ← Add this line!
 
+    # RAG tools (optional)
     supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
     if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and supabase_token:
         for collection in cfg.rag.collections:
             rag_tool = await create_rag_tool(cfg.rag.rag_url, collection, supabase_token)
             tools.append(rag_tool)
 
+    # MCP tools (optional)
     if cfg.mcp_config and cfg.mcp_config.url and cfg.mcp_config.tools and (mcp_tokens := await fetch_tokens(config)):
         mcp_client = MultiServerMCPClient(
             connections={
@@ -297,9 +306,6 @@ async def graph(config: RunnableConfig):
     return create_react_agent(
         prompt=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT,
         model=model,
-        tools=tools,
+        tools=tools,  # ← Now includes your local tools!
         config_schema=GraphConfigPydantic,
     )
-
-
-
