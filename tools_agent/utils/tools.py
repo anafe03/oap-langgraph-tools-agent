@@ -364,275 +364,6 @@ async def generate_caption_from_image(image_url: str) -> str:
 
 
 
-
-import os
-import aiohttp
-from typing import Annotated, List, Dict
-from langchain_core.tools import tool, ToolException
-
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-
-async def _search_professionals(
-    profession: str, 
-    location: str, 
-    additional_keywords: str = ""
-) -> Dict:
-    """
-    Generic function to search for real estate professionals using Tavily API.
-    """
-    url = "https://api.tavily.com/search"
-    headers = {
-        "Authorization": f"Bearer {TAVILY_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    
-    query = f"{profession} {location} {additional_keywords} contact phone website"
-    payload = {
-        "query": query,
-        "max_results": 8,
-        "search_depth": "advanced",
-        "include_domains": ["zillow.com", "realtor.com", "yelp.com", "google.com", "angieslist.com"]
-    }
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=payload) as response:
-                if response.status != 200:
-                    error_message = await response.text()
-                    raise ToolException(
-                        f"Failed to find {profession} in {location}. "
-                        f"API responded with status {response.status}: {error_message}"
-                    )
-                data = await response.json()
-                
-                results = []
-                for item in data.get("results", []):
-                    result = {
-                        "name": item.get("title", "").replace(" - ", " | "),
-                        "url": item.get("url", ""),
-                        "snippet": item.get("snippet", ""),
-                        "domain": item.get("url", "").split("//")[-1].split("/")[0] if item.get("url") else ""
-                    }
-                    results.append(result)
-                
-                return {
-                    "location": location,
-                    "profession": profession,
-                    "results": results,
-                    "total_found": len(results)
-                }
-    except Exception as e:
-        raise ToolException(f"An error occurred searching for {profession}: {str(e)}")
-
-#@tool(name="find_bank", description="Find banks and mortgage lenders in a specific area for real estate financing")
-async def find_bank(
-    location: Annotated[str, "The location (city, state, or zip code) to search for banks and lenders"]
-) -> str:
-    """Find local banks and mortgage lenders for real estate financing."""
-    try:
-        data = await _search_professionals("mortgage lender bank", location, "home loan real estate financing")
-        
-        result_text = f"🏦 **Banks & Mortgage Lenders in {location}**\n\n"
-        
-        if data["total_found"] == 0:
-            return f"No banks or lenders found in {location}. Try searching in a nearby larger city."
-        
-        for i, result in enumerate(data["results"][:6], 1):
-            result_text += f"**{i}. {result['name']}**\n"
-            result_text += f"   🔗 {result['url']}\n"
-            if result['snippet']:
-                result_text += f"   📝 {result['snippet'][:150]}...\n"
-            result_text += "\n"
-        
-        result_text += f"💡 **Tip:** Contact multiple lenders to compare rates and terms. Consider both local banks and national lenders for the best deal."
-        
-        return result_text
-        
-    except Exception as e:
-        return f"❌ Error finding banks: {str(e)}"
-
-#@tool(name="find_title_company", description="Find title companies and escrow services in a specific area")
-async def find_title_company(
-    location: Annotated[str, "The location (city, state, or zip code) to search for title companies"]
-) -> str:
-    """Find local title companies and escrow services for real estate transactions."""
-    try:
-        data = await _search_professionals("title company escrow", location, "real estate closing settlement")
-        
-        result_text = f"📋 **Title Companies & Escrow Services in {location}**\n\n"
-        
-        if data["total_found"] == 0:
-            return f"No title companies found in {location}. Try searching in a nearby larger city."
-        
-        for i, result in enumerate(data["results"][:6], 1):
-            result_text += f"**{i}. {result['name']}**\n"
-            result_text += f"   🔗 {result['url']}\n"
-            if result['snippet']:
-                result_text += f"   📝 {result['snippet'][:150]}...\n"
-            result_text += "\n"
-        
-        result_text += f"💡 **Tip:** Title companies handle title searches, insurance, and closing coordination. Choose one with good reviews and competitive pricing."
-        
-        return result_text
-        
-    except Exception as e:
-        return f"❌ Error finding title companies: {str(e)}"
-
-#@tool(name="find_real_estate_attorney", description="Find real estate attorneys in a specific area")
-async def find_real_estate_attorney(
-    location: Annotated[str, "The location (city, state, or zip code) to search for real estate attorneys"]
-) -> str:
-    """Find local real estate attorneys for legal assistance with property transactions."""
-    try:
-        data = await _search_professionals("real estate attorney lawyer", location, "property law closing contract review")
-        
-        result_text = f"⚖️ **Real Estate Attorneys in {location}**\n\n"
-        
-        if data["total_found"] == 0:
-            return f"No real estate attorneys found in {location}. Try searching in a nearby larger city."
-        
-        for i, result in enumerate(data["results"][:6], 1):
-            result_text += f"**{i}. {result['name']}**\n"
-            result_text += f"   🔗 {result['url']}\n"
-            if result['snippet']:
-                result_text += f"   📝 {result['snippet'][:150]}...\n"
-            result_text += "\n"
-        
-        result_text += f"💡 **Tip:** Real estate attorneys can review contracts, handle complex transactions, and resolve legal issues. Some states require attorney involvement in closings."
-        
-        return result_text
-        
-    except Exception as e:
-        return f"❌ Error finding real estate attorneys: {str(e)}"
-
-#@tool(name="find_real_estate_photographer", description="Find real estate photographers in a specific area")
-async def find_real_estate_photographer(
-    location: Annotated[str, "The location (city, state, or zip code) to search for real estate photographers"]
-) -> str:
-    """Find local real estate photographers for property listing photos."""
-    try:
-        data = await _search_professionals("real estate photographer", location, "property photography listing photos drone aerial")
-        
-        result_text = f"📸 **Real Estate Photographers in {location}**\n\n"
-        
-        if data["total_found"] == 0:
-            return f"No real estate photographers found in {location}. Try searching in a nearby larger city."
-        
-        for i, result in enumerate(data["results"][:6], 1):
-            result_text += f"**{i}. {result['name']}**\n"
-            result_text += f"   🔗 {result['url']}\n"
-            if result['snippet']:
-                result_text += f"   📝 {result['snippet'][:150]}...\n"
-            result_text += "\n"
-        
-        result_text += f"💡 **Tip:** Quality photos are crucial for selling your home. Look for photographers who offer drone shots, virtual tours, and quick turnaround times."
-        
-        return result_text
-        
-    except Exception as e:
-        return f"❌ Error finding real estate photographers: {str(e)}"
-
-#@tool(name="find_inspector", description="Find home inspectors in a specific area")
-async def find_inspector(
-    location: Annotated[str, "The location (city, state, or zip code) to search for home inspectors"]
-) -> str:
-    """Find local certified home inspectors for property inspections."""
-    try:
-        data = await _search_professionals("home inspector", location, "certified property inspection structural mechanical electrical")
-        
-        result_text = f"🔍 **Home Inspectors in {location}**\n\n"
-        
-        if data["total_found"] == 0:
-            return f"No home inspectors found in {location}. Try searching in a nearby larger city."
-        
-        for i, result in enumerate(data["results"][:6], 1):
-            result_text += f"**{i}. {result['name']}**\n"
-            result_text += f"   🔗 {result['url']}\n"
-            if result['snippet']:
-                result_text += f"   📝 {result['snippet'][:150]}...\n"
-            result_text += "\n"
-        
-        result_text += f"💡 **Tip:** Choose an inspector certified by ASHI, InterNACHI, or your state's licensing board. Get the inspection done within your due diligence period."
-        
-        return result_text
-        
-    except Exception as e:
-        return f"❌ Error finding home inspectors: {str(e)}"
-
-#@tool(name="find_appraiser", description="Find certified real estate appraisers in a specific area")
-async def find_appraiser(
-    location: Annotated[str, "The location (city, state, or zip code) to search for real estate appraisers"]
-) -> str:
-    """Find local certified real estate appraisers for property valuations."""
-    try:
-        data = await _search_professionals("real estate appraiser", location, "certified property valuation appraisal")
-        
-        result_text = f"📊 **Real Estate Appraisers in {location}**\n\n"
-        
-        if data["total_found"] == 0:
-            return f"No real estate appraisers found in {location}. Try searching in a nearby larger city."
-        
-        for i, result in enumerate(data["results"][:6], 1):
-            result_text += f"**{i}. {result['name']}**\n"
-            result_text += f"   🔗 {result['url']}\n"
-            if result['snippet']:
-                result_text += f"   📝 {result['snippet'][:150]}...\n"
-            result_text += "\n"
-        
-        result_text += f"💡 **Tip:** Appraisers must be licensed or certified in your state. Banks typically order appraisals for mortgages, but you can get independent appraisals for pricing guidance."
-        
-        return result_text
-        
-    except Exception as e:
-        return f"❌ Error finding real estate appraisers: {str(e)}"
-
-# Bonus tool: Find all professionals at once
-#@tool(name="find_all_real_estate_professionals", description="Find all types of real estate professionals in one search")
-async def find_all_real_estate_professionals(
-    location: Annotated[str, "The location (city, state, or zip code) to search for all real estate professionals"]
-) -> str:
-    """Find all types of real estate professionals in your area - a comprehensive search."""
-    try:
-        result_text = f"🏠 **Complete Real Estate Professional Directory for {location}**\n\n"
-        
-        # Search for each profession type
-        professions = [
-            ("🏦 Banks & Lenders", "mortgage lender bank", "home loan financing"),
-            ("📋 Title Companies", "title company escrow", "closing settlement"),
-            ("⚖️ Real Estate Attorneys", "real estate attorney", "property law"),
-            ("📸 Photographers", "real estate photographer", "property photos"),
-            ("🔍 Home Inspectors", "home inspector", "property inspection"),
-            ("📊 Appraisers", "real estate appraiser", "property valuation")
-        ]
-        
-        for section_title, profession, keywords in professions:
-            try:
-                data = await _search_professionals(profession, location, keywords)
-                result_text += f"## {section_title}\n"
-                
-                if data["total_found"] > 0:
-                    for i, result in enumerate(data["results"][:3], 1):  # Top 3 for each category
-                        result_text += f"{i}. **{result['name']}** - {result['url']}\n"
-                else:
-                    result_text += "No results found for this category.\n"
-                result_text += "\n"
-                
-            except Exception as e:
-                result_text += f"## {section_title}\n"
-                result_text += f"Error searching this category: {str(e)}\n\n"
-        
-        result_text += "💡 **Pro Tip:** Save this list and contact multiple professionals in each category to compare services and pricing!"
-        
-        return result_text
-        
-    except Exception as e:
-        return f"❌ Error in comprehensive search: {str(e)}"
-    
-
-
-
-
-
 ######CMA TOOOL GET THIS IN A SEPERATE FILE
 
 import os
@@ -1396,3 +1127,377 @@ async def post_to_twitter(
 
 #####
 
+
+
+
+##getter with formatting
+
+
+import os
+import aiohttp
+from typing import Annotated, Dict, List
+from langchain_core.tools import ToolException
+import json
+import re
+
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
+async def _search_professionals(
+    profession: str, 
+    location: str, 
+    additional_keywords: str = "",
+    max_results: int = 8
+) -> Dict:
+    """
+    Enhanced search for real estate professionals with better filtering.
+    """
+    url = "https://api.tavily.com/search"
+    headers = {
+        "Authorization": f"Bearer {TAVILY_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    
+    # More specific query to get actual business listings
+    query = f'"{profession}" "{location}" contact phone address reviews -"search" -"find" -"best of"'
+    payload = {
+        "query": query,
+        "max_results": max_results,
+        "search_depth": "advanced",
+        "include_domains": [
+            "yelp.com", "google.com", "yellowpages.com", "bbb.org", 
+            "thumbtack.com", "angieslist.com", "homeadvisor.com",
+            "facebook.com", "linkedin.com", "avvo.com"
+        ]
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=payload) as response:
+                if response.status != 200:
+                    error_message = await response.text()
+                    raise ToolException(f"Search failed: {error_message}")
+                
+                data = await response.json()
+                results = []
+                
+                for item in data.get("results", []):
+                    # Filter out generic search pages
+                    title = item.get("title", "")
+                    url_str = item.get("url", "")
+                    snippet = item.get("snippet", "")
+                    
+                    # Skip if it's a search results page
+                    if any(word in title.lower() for word in ["search", "find", "best of", "top 10"]):
+                        continue
+                    if "search?" in url_str or "/search" in url_str:
+                        continue
+                    
+                    # Extract business information
+                    business_name = _extract_business_name(title, snippet)
+                    phone = _extract_phone(snippet)
+                    address = _extract_address(snippet)
+                    rating = _extract_rating(snippet)
+                    
+                    if business_name and business_name != "Unknown Business":
+                        result = {
+                            "name": business_name,
+                            "address": address,
+                            "phone": phone,
+                            "rating": rating,
+                            "url": url_str,
+                            "snippet": snippet,
+                            "domain": url_str.split("//")[-1].split("/")[0] if url_str else ""
+                        }
+                        results.append(result)
+                
+                return {
+                    "location": location,
+                    "profession": profession,
+                    "results": results[:6],  # Limit to top 6 results
+                    "total_found": len(results)
+                }
+                
+    except Exception as e:
+        raise ToolException(f"Search error: {str(e)}")
+
+def _extract_business_name(title: str, snippet: str) -> str:
+    """Extract actual business name from title and snippet."""
+    # Clean up title
+    title = re.sub(r'^(TOP \d+|Best|Find|Get|Search)\s+', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\s+(near|in)\s+.*$', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\s*-\s*.*Yelp.*$', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\s*-\s*.*Google.*$', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\s*\|\s*.*$', '', title)
+    
+    # Try to extract business name from snippet if title is generic
+    if len(title) < 10 or any(word in title.lower() for word in ["photographer", "attorney", "company"]):
+        # Look for business names in snippet (often in quotes or after specific patterns)
+        name_patterns = [
+            r'"([^"]+)"',  # Names in quotes
+            r'([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:Photography|Law|Attorney|Company)',
+            r'Contact\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+            r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+is\s+a'
+        ]
+        
+        for pattern in name_patterns:
+            matches = re.findall(pattern, snippet)
+            if matches:
+                return matches[0].strip()
+    
+    return title.strip() if title.strip() else "Professional Service"
+
+def _extract_phone(text: str) -> str:
+    """Extract phone number from text."""
+    phone_patterns = [
+        r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
+        r'\d{3}[-.\s]\d{3}[-.\s]\d{4}',
+        r'(?:Phone|Call|Tel):?\s*(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})'
+    ]
+    
+    for pattern in phone_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            phone = matches[0] if isinstance(matches[0], str) else matches[0]
+            return phone.strip()
+    return "📞 Call for info"
+
+def _extract_address(text: str) -> str:
+    """Extract address from text."""
+    address_patterns = [
+        r'\d+\s+[A-Za-z0-9\s,\.]+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Way|Place|Pl)[A-Za-z0-9\s,\.]*, [A-Z]{2}\s*\d{5}',
+        r'\d+\s+[A-Za-z\s,\.]+, [A-Za-z\s]+, [A-Z]{2}\s*\d{5}',
+        r'(?:Address|Located):?\s*([^\n\r\.]+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr)[^\n\r\.]*)'
+    ]
+    
+    for pattern in address_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            address = matches[0].strip()
+            return address[:60] + "..." if len(address) > 60 else address
+    return "📍 Address on website"
+
+def _extract_rating(text: str) -> str:
+    """Extract rating from text."""
+    rating_patterns = [
+        r'(\d+\.?\d*)\s*(?:out of|\/)\s*5\s*stars?',
+        r'(\d+\.?\d*)\s*stars?',
+        r'Rating:?\s*(\d+\.?\d*)',
+        r'(\d+\.?\d*)\/5',
+        r'Rated\s+(\d+\.?\d*)'
+    ]
+    
+    for pattern in rating_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            rating = float(matches[0])
+            stars = "⭐" * int(rating) + "☆" * (5 - int(rating))
+            return f"{stars} ({rating}/5)"
+    return "⭐ Not rated yet"
+
+def _format_professional_card(result: Dict, index: int) -> str:
+    """Format each professional as a clean card."""
+    card = f"""
+┌─ **{index}. {result['name']}**
+│
+├ 📍 **Address:** {result['address']}
+├ 📞 **Phone:** {result['phone']}  
+├ ⭐ **Rating:** {result['rating']}
+└ 🌐 **Website:** [Click to Visit]({result['url']})
+
+"""
+    return card
+
+def _format_chatbot_response(title: str, location: str, results: List[Dict], tips: List[str]) -> str:
+    """Format response for chatbot with clean professional cards."""
+    
+    if not results:
+        return f"""
+❌ **No {title} Found**
+
+I couldn't find specific {title.lower()} in {location}. 
+
+**Try:**
+• Expanding search to nearby cities
+• Contacting local real estate offices for referrals
+• Checking with your state's licensing board
+
+Need help with something else? 😊
+"""
+    
+    response = f"""
+🎯 **{title} in {location}**
+
+Found {len(results)} qualified professionals:
+
+"""
+    
+    # Add each professional card
+    for i, result in enumerate(results, 1):
+        response += _format_professional_card(result, i)
+    
+    # Add tips section
+    if tips:
+        response += "\n💡 **Quick Tips:**\n"
+        for tip in tips[:3]:
+            response += f"• {tip}\n"
+    
+    response += "\n💬 **Need more help?** Just ask!"
+    
+    return response
+
+# Remove @tool decorator - now just regular async functions
+async def find_real_estate_attorney(location: str) -> str:
+    """Find local real estate attorneys for legal assistance with property transactions."""
+    try:
+        data = await _search_professionals(
+            "real estate attorney lawyer", 
+            location, 
+            "property law closing contract residential"
+        )
+        
+        tips = [
+            "Verify they're licensed in your state",
+            "Ask about FSBO transaction experience", 
+            "Get fee quotes upfront",
+            "Check their availability for your timeline"
+        ]
+        
+        return _format_chatbot_response(
+            "Real Estate Attorneys", 
+            location, 
+            data["results"], 
+            tips
+        )
+        
+    except Exception as e:
+        return f"❌ **Search Error**\n\nHad trouble finding attorneys in {location}.\nPlease try again or contact me for manual assistance."
+
+async def find_real_estate_photographer(location: str) -> str:
+    """Find local real estate photographers for property listing photos."""
+    try:
+        data = await _search_professionals(
+            "real estate photographer photography", 
+            location, 
+            "property listing photos drone aerial"
+        )
+        
+        tips = [
+            "Request portfolio samples before booking",
+            "Ask about drone/aerial photography", 
+            "Confirm 24-48 hour turnaround time",
+            "Get pricing for different packages"
+        ]
+        
+        return _format_chatbot_response(
+            "Real Estate Photographers", 
+            location, 
+            data["results"], 
+            tips
+        )
+        
+    except Exception as e:
+        return f"❌ **Search Error**\n\nHad trouble finding photographers in {location}.\nPlease try again or contact me for manual assistance."
+
+async def find_title_company(location: str) -> str:
+    """Find local title companies and escrow services."""
+    try:
+        data = await _search_professionals(
+            "title company escrow", 
+            location, 
+            "real estate closing settlement insurance"
+        )
+        
+        tips = [
+            "Compare closing costs upfront",
+            "Ask about average time to close", 
+            "Verify they handle FSBO transactions",
+            "Check if they provide title insurance"
+        ]
+        
+        return _format_chatbot_response(
+            "Title Companies", 
+            location, 
+            data["results"], 
+            tips
+        )
+        
+    except Exception as e:
+        return f"❌ **Search Error**\n\nHad trouble finding title companies in {location}.\nPlease try again or contact me for manual assistance."
+
+async def find_mortgage_lender(location: str) -> str:
+    """Find local mortgage lenders and banks."""
+    try:
+        data = await _search_professionals(
+            "mortgage lender bank", 
+            location, 
+            "home loan residential financing"
+        )
+        
+        tips = [
+            "Shop rates from multiple lenders",
+            "Get pre-approval for serious buyers", 
+            "Compare total closing costs",
+            "Ask about first-time buyer programs"
+        ]
+        
+        return _format_chatbot_response(
+            "Mortgage Lenders", 
+            location, 
+            data["results"], 
+            tips
+        )
+        
+    except Exception as e:
+        return f"❌ **Search Error**\n\nHad trouble finding lenders in {location}.\nPlease try again or contact me for manual assistance."
+
+async def find_home_inspector(location: str) -> str:
+    """Find local certified home inspectors."""
+    try:
+        data = await _search_professionals(
+            "home inspector inspection", 
+            location, 
+            "certified property structural mechanical"
+        )
+        
+        tips = [
+            "Verify certifications (ASHI/InterNACHI)",
+            "Ask for sample inspection reports", 
+            "Get quotes including all systems",
+            "Check availability for your timeline"
+        ]
+        
+        return _format_chatbot_response(
+            "Home Inspectors", 
+            location, 
+            data["results"], 
+            tips
+        )
+        
+    except Exception as e:
+        return f"❌ **Search Error**\n\nHad trouble finding inspectors in {location}.\nPlease try again or contact me for manual assistance."
+
+async def find_appraiser(location: str) -> str:
+    """Find local certified real estate appraisers."""
+    try:
+        data = await _search_professionals(
+            "real estate appraiser", 
+            location, 
+            "certified residential property valuation"
+        )
+        
+        tips = [
+            "Verify state licensing/certification",
+            "Ask about local market experience", 
+            "Get timeline for completion",
+            "Understand different appraisal types"
+        ]
+        
+        return _format_chatbot_response(
+            "Real Estate Appraisers", 
+            location, 
+            data["results"], 
+            tips
+        )
+        
+    except Exception as e:
+        return f"❌ **Search Error**\n\nHad trouble finding appraisers in {location}.\nPlease try again or contact me for manual assistance."

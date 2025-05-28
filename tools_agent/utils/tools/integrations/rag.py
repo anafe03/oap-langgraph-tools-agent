@@ -1,0 +1,173 @@
+"""
+RAG (Retrieval-Augmented Generation) tool creation and management.
+"""
+import aiohttp
+import re
+from typing import Annotated
+from langchain_core.tools import StructuredTool, ToolException
+
+
+async def create_rag_tool(rag_url: str, collection_id: str, access_token: str):
+    """Create a RAG tool for a specific collection.
+
+    Args:
+        rag_url: The base URL for the RAG API server
+        collection_id: The ID of the collection to query
+        access_token: The access token for authentication
+
+    Returns:
+        A structured tool that can be used to query the RAG collection
+    """
+    if rag_url.endswith("/"):
+        rag_url = rag_url[:-1]
+
+    collection_endpoint = f"{rag_url}/collections/{collection_id}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                collection_endpoint, 
+                headers={"Authorization": f"Bearer {access_token}"}
+            ) as response:
+                response.raise_for_status()
+                collection_data = await response.json()
+
+        # Get the collection name and sanitize it to match the required regex pattern
+        raw_collection_name = collection_data.get("name", f"collection_{collection_id}")
+
+        # Sanitize the name to only include alphanumeric characters, underscores, and hyphens
+        # Replace any other characters with underscores
+        sanitized_name = re.sub(r"[^a-zA-Z0-9_-]", "_", raw_collection_name)
+
+        # Ensure the name is not empty and doesn't exceed 64 characters
+        if not sanitized_name:
+            sanitized_name = f"collection_{collection_id}"
+        collection_name = sanitized_name[:64]
+
+        raw_description = collection_data.get("metadata", {}).get("description")
+
+        if not raw_description:
+            collection_description = "Search your collection of documents for results semantically similar to the input query"
+        else:
+            collection_description = f"Search your collection of documents for results semantically similar to the input query. Collection description: {raw_description}"
+
+        async def get_documents(
+            query: Annotated[str, "The search query to find relevant documents"],
+        ) -> str:
+            """Search for documents in the collection based on the query"""
+
+            search_endpoint = f"{rag_url}/collections/{collection_id}/documents/search"
+            payload = {"query": query, "limit": 10}
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        search_endpoint,
+                        json=payload,
+                        headers={"Authorization": f"Bearer {access_token}"},
+                    ) as search_response:
+                        search_response.raise_for_status()
+                        documents = await search_response.json()
+
+                formatted_docs = "<all-documents>\n"
+
+                for doc in documents:
+                    doc_id = doc.get("id", "unknown")
+                    content = doc.get("page_content", "")
+                    formatted_docs += (
+                        f'  <document id="{doc_id}">\n    {content}\n  </document>\n'
+                    )
+
+                formatted_docs += "</all-documents>"
+                return formatted_docs
+            except Exception as e:
+                return f"<all-documents>\n  <error>{str(e)}</error>\n</all-documents>"
+
+        # Create the tool with proper name and description
+        tool = StructuredTool.from_function(
+            func=get_documents,
+            name=collection_name,
+            description=collection_description
+        )
+        
+        return tool
+
+    except Exception as e:
+        raise Exception(f"Failed to create RAG tool: {str(e)}")
+
+
+def wrap_mcp_authenticate_tool(tool: StructuredTool) -> StructuredTool:
+    """Wrap the tool coroutine to handle `interaction_required` MCP error.
+
+    Tried to obtain the URL from the error, which the LLM can use to render a link."""
+
+    old_coroutine = tool.coroutine
+
+    async def wrapped_mcp_coroutine(**kwargs):
+        try:
+            response = await old_coroutine(**kwargs)
+            return response
+        except Exception as e:
+            if "TaskGroup" in str(e) and hasattr(e, "__context__"):
+                sub_exception = e.__context__
+                if hasattr(sub_exception, "error"):
+                    e = sub_exception
+
+            if (
+                hasattr(e, "error")
+                and hasattr(e.error, "code")
+                and e.error.code == -32003
+                and hasattr(e.error, "data")
+            ):
+                error_message = (
+                    ((e.error.data or {}).get("message") or {}).get("text")
+                ) or "Required interaction"
+
+                if url := (e.error.data or {}).get("url"):
+                    error_message += f": {url}"
+
+                raise ToolException(error_message)
+            raise e
+
+    tool.coroutine = wrapped_mcp_coroutine
+    return tool
+
+
+class RAGManager:
+    """Manager class for handling multiple RAG collections."""
+    
+    def __init__(self, rag_url: str, access_token: str):
+        self.rag_url = rag_url.rstrip("/")
+        self.access_token = access_token
+        self.tools = {}
+    
+    async def list_collections(self):
+        """List all available collections."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.rag_url}/collections",
+                    headers={"Authorization": f"Bearer {self.access_token}"}
+                ) as response:
+                    response.raise_for_status()
+                    return await response.json()
+        except Exception as e:
+            raise Exception(f"Failed to list collections: {str(e)}")
+    
+    async def create_collection_tool(self, collection_id: str):
+        """Create and cache a RAG tool for a specific collection."""
+        if collection_id not in self.tools:
+            tool = await create_rag_tool(self.rag_url, collection_id, self.access_token)
+            self.tools[collection_id] = tool
+        return self.tools[collection_id]
+    
+    async def get_all_tools(self, collection_ids: list):
+        """Get RAG tools for multiple collections."""
+        tools = []
+        for collection_id in collection_ids:
+            tool = await self.create_collection_tool(collection_id)
+            tools.append(tool)
+        return tools
+    
+    def clear_cache(self):
+        """Clear the cached tools."""
+        self.tools.clear()
