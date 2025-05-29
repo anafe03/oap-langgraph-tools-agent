@@ -2,11 +2,14 @@ from langchain_core.runnables import RunnableConfig
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from langgraph.prebuilt import create_react_agent
-#from tools_agent.utils.tools import create_rag_tool
+from tools_agent.utils.tools import create_rag_tool
 from langchain.chat_models import init_chat_model
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from tools_agent.utils.token import fetch_tokens
-#from tools_agent.utils.tools import wrap_mcp_authenticate_tool
+from tools_agent.utils.tools import wrap_mcp_authenticate_tool
+
+from tools_agent.utils.tools.market import (neighborhood_activity_tracker)
+
 
 # Import all
 
@@ -15,6 +18,7 @@ from tools_agent.utils.tools import (
     # Listing tools
     make_listing,
     syndicate_listing,
+    
     
     # Market research and valuation tools
     market_trends,
@@ -38,7 +42,9 @@ from tools_agent.utils.tools import (
     
     # Integration tools
     create_rag_tool,
-    wrap_mcp_authenticate_tool
+    wrap_mcp_authenticate_tool,
+   
+
 )
 
 
