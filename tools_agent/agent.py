@@ -1,3 +1,5 @@
+# tools_agent/agent.py - Updated to include Q&A tools
+
 from langchain_core.runnables import RunnableConfig
 from typing import Optional, List
 from pydantic import BaseModel, Field
@@ -10,15 +12,11 @@ from tools_agent.utils.tools import wrap_mcp_authenticate_tool
 
 from tools_agent.utils.tools.market import (neighborhood_activity_tracker)
 
-
-# Import all
-
-# Import organized tools from the new structure
+# Import all existing tools
 from tools_agent.utils.tools import (
     # Listing tools
     make_listing,
     syndicate_listing,
-    
     
     # Market research and valuation tools
     market_trends,
@@ -32,7 +30,7 @@ from tools_agent.utils.tools import (
     find_appraiser,
     find_real_estate_photographer,
     find_home_inspector,
-    # Marketing and scheduling tools
+    
     # Marketing and scheduling tools
     schedule_open_house,
     post_to_facebook,
@@ -43,18 +41,23 @@ from tools_agent.utils.tools import (
     # Integration tools
     create_rag_tool,
     wrap_mcp_authenticate_tool,
-   
-
 )
 
-
+# Import the new document Q&A tools
+from tools_agent.utils.tools.QnA import (
+    query_documents,
+    list_available_documents,
+    refresh_document_index
+)
 
 UNEDITABLE_SYSTEM_PROMPT = "\nIf the tool throws an error requiring authentication, provide the user with a Markdown link to the authentication page and prompt them to authenticate."
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a knowledgeable and supportive AI real estate agent named Vesty that helps homeowners navigate the For Sale By Owner (FSBO) process. Greet the user and introduce yourself. "
-    "You have access to comprehensive tools that let you create property listings, find professional services, generate market analysis, schedule showings, provide pricing guidance, and more. "
+    "You have access to comprehensive tools that let you create property listings, find professional services, generate market analysis, schedule showings, provide pricing guidance, "
+    "analyze documents, and answer questions about uploaded files. "
     "When users ask for help, use the appropriate tools and always make sure to inform them of the next steps in their FSBO journey. "
+    "You can also help users analyze documents they upload - contracts, inspection reports, market data, or any real estate related documents. "
     "Your goal is to assist sellers in effectively marketing and managing their property sale without needing a traditional agent, while connecting them with the right professionals when needed."
 )
 
@@ -125,32 +128,37 @@ class GraphConfigPydantic(BaseModel):
 async def graph(config: RunnableConfig):
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
     
-    # Complete list of tools (excluding find_real_estate_agent as requested)
+    # Complete list of tools including new Q&A tools
     tools = [
-            # Core listing and market tools
-            make_listing,
-            syndicate_listing,
-            market_trends,
-            
-            # Valuation and analysis tools
-            generate_cma,
-            quick_property_valuation,
-            
-            # Professional finder tools
-            find_mortgage_lender,
-            find_real_estate_attorney,
-            find_title_company,
-            find_appraiser,
-            find_real_estate_photographer,
-            find_home_inspector,
-            
-            # Marketing and scheduling tools
-            schedule_open_house,
-            post_to_facebook,
-            send_open_house_emails,
-            generate_property_listing_tweet,
-            post_to_twitter
-        ]
+        # Core listing and market tools
+        make_listing,
+        syndicate_listing,
+        market_trends,
+        
+        # Valuation and analysis tools
+        generate_cma,
+        quick_property_valuation,
+        
+        # Professional finder tools
+        find_mortgage_lender,
+        find_real_estate_attorney,
+        find_title_company,
+        find_appraiser,
+        find_real_estate_photographer,
+        find_home_inspector,
+        
+        # Marketing and scheduling tools
+        schedule_open_house,
+        post_to_facebook,
+        send_open_house_emails,
+        generate_property_listing_tweet,
+        post_to_twitter,
+        
+        # NEW: Document Q&A tools
+        query_documents,
+        list_available_documents,
+        refresh_document_index
+    ]
 
     # RAG tools (optional)
     supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
