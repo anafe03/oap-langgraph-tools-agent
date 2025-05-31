@@ -43,12 +43,12 @@ from tools_agent.utils.tools import (
     wrap_mcp_authenticate_tool,
 )
 
-# Import the new document Q&A tools
-from tools_agent.utils.tools.QnA import (
-    query_documents,
-    list_available_documents,
-    refresh_document_index
-)
+# # Import the new document Q&A tools
+# from tools_agent.utils.tools.QnA import (
+#     query_documents,
+#     list_available_documents,
+#     refresh_document_index
+#)
 
 UNEDITABLE_SYSTEM_PROMPT = "\nIf the tool throws an error requiring authentication, provide the user with a Markdown link to the authentication page and prompt them to authenticate."
 
@@ -154,10 +154,10 @@ async def graph(config: RunnableConfig):
         generate_property_listing_tweet,
         post_to_twitter,
         
-        # NEW: Document Q&A tools
-        query_documents,
-        list_available_documents,
-        refresh_document_index
+        # # NEW: Document Q&A tools
+        # query_documents,
+        # list_available_documents,
+        # refresh_document_index
     ]
 
     # RAG tools (optional)
