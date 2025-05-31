@@ -3,336 +3,375 @@
 import os
 import json
 import asyncio
-from typing import List, Dict, Optional, Annotated
+from typing import List, Dict, Annotated
 from pathlib import Path
+
 import PyPDF2
 import docx
+
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
-from langchain_core.tools import tool
+from langchain.embeddings.openai import OpenAIEmbeddings
+# from langchain_core.tools import tool   # <— uncomment to enable
 from langchain.chains import RetrievalQA
 from langchain.chat_models import init_chat_model
 
-# Global variables for document store
-document_store = None
-document_metadata = {}
+# ──────────────────────────────────────────────────────────────────────────────
+# Global variables for the vector store and metadata
+# ──────────────────────────────────────────────────────────────────────────────
+document_store: FAISS = None
+document_metadata: Dict = {}
 
-# Initialize paths
+# Paths for static and uploaded documents, and where to save the FAISS index
 STATIC_DOCS_PATH = Path("backend/static/documents")
 UPLOADS_DOCS_PATH = Path("backend/uploads")
 VECTOR_STORE_PATH = Path("backend/vector_store")
 
-# Ensure directories exist
+# Ensure these directories exist on startup
 STATIC_DOCS_PATH.mkdir(parents=True, exist_ok=True)
 UPLOADS_DOCS_PATH.mkdir(parents=True, exist_ok=True)
 VECTOR_STORE_PATH.mkdir(parents=True, exist_ok=True)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Helper: extract text from file
+# ──────────────────────────────────────────────────────────────────────────────
 def extract_text_from_file(file_path: Path) -> str:
-    """Extract text from various file formats."""
-    file_extension = file_path.suffix.lower()
-    
+    """Extract raw text from PDF, DOCX, or TXT. Returns error string if something fails."""
+    ext = file_path.suffix.lower()
+
     try:
-        if file_extension == '.pdf':
-            with open(file_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                text = ""
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
-                return text
-                
-        elif file_extension == '.docx':
+        if ext == ".pdf":
+            text_chunks = []
+            with open(file_path, "rb") as f:
+                reader = PyPDF2.PdfReader(f)
+                for page in reader.pages:
+                    page_text = page.extract_text() or ""
+                    text_chunks.append(page_text)
+            return "\n".join(text_chunks)
+
+        elif ext == ".docx":
             doc = docx.Document(file_path)
-            return "\n".join([paragraph.text for paragraph in doc.paragraphs])
-            
-        elif file_extension == '.txt':
-            with open(file_path, 'r', encoding='utf-8') as file:
-                return file.read()
-                
+            return "\n".join(p.text for p in doc.paragraphs)
+
+        elif ext == ".txt":
+            return file_path.read_text(encoding="utf-8")
+
         else:
-            return f"Unsupported file format: {file_extension}"
-            
+            return f"Unsupported file format: {ext}"
+
     except Exception as e:
         return f"Error reading file {file_path.name}: {str(e)}"
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Helper: walk a directory, load all supported docs into a list of dicts
+# ──────────────────────────────────────────────────────────────────────────────
 def load_documents_from_directory(directory: Path, source_type: str) -> List[Dict]:
-    """Load all documents from a directory."""
-    documents = []
-    
+    """
+    Load every .pdf, .docx, or .txt from `directory`.
+    Returns a list of dicts: { 'content': <str>, 'metadata': {…} }.
+    """
+    docs: List[Dict] = []
     if not directory.exists():
-        return documents
-    
+        return docs
+
     for file_path in directory.iterdir():
-        if file_path.is_file() and file_path.suffix.lower() in ['.pdf', '.docx', '.txt']:
-            text = extract_text_from_file(file_path)
-            if text and not text.startswith("Error") and not text.startswith("Unsupported"):
-                documents.append({
-                    'content': text,
-                    'metadata': {
-                        'source': str(file_path),
-                        'filename': file_path.name,
-                        'source_type': source_type,
-                        'file_size': file_path.stat().st_size
-                    }
-                })
-    
-    return documents
+        if (
+            file_path.is_file()
+            and file_path.suffix.lower() in [".pdf", ".docx", ".txt"]
+        ):
+            raw = extract_text_from_file(file_path)
+            if raw.startswith("Error") or raw.startswith("Unsupported"):
+                continue
+
+            docs.append({
+                "content": raw,
+                "metadata": {
+                    "source": str(file_path),
+                    "filename": file_path.name,
+                    "source_type": source_type,
+                    "file_size": file_path.stat().st_size,
+                }
+            })
+
+    return docs
 
 
-async def initialize_document_store():
-    """Initialize or refresh the document vector store."""
+# ──────────────────────────────────────────────────────────────────────────────
+# Initialize (or rebuild) the FAISS-based document store
+# ──────────────────────────────────────────────────────────────────────────────
+async def initialize_document_store() -> bool:
+    """
+    Read all static & uploaded docs, chunk them, embed them, and write to disk.
+    Returns True on success, False on error.
+    """
     global document_store, document_metadata
-    
+
     try:
-        # Load documents from both directories
+        # 1) load raw docs
         static_docs = load_documents_from_directory(STATIC_DOCS_PATH, "static")
         uploaded_docs = load_documents_from_directory(UPLOADS_DOCS_PATH, "uploaded")
-        
-        all_documents = static_docs + uploaded_docs
-        
-        if not all_documents:
-            print("No documents found to index")
+        all_docs = static_docs + uploaded_docs
+
+        if not all_docs:
+            print("No documents found to index.")
             return False
-        
-        # Split documents into chunks
-        text_splitter = RecursiveCharacterTextSplitter(
+
+        # 2) chunk each document’s content
+        splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
-            length_function=len
+            length_function=len,
         )
-        
-        texts = []
-        metadatas = []
-        
-        for doc in all_documents:
-            chunks = text_splitter.split_text(doc['content'])
-            for i, chunk in enumerate(chunks):
-                texts.append(chunk)
-                chunk_metadata = doc['metadata'].copy()
-                chunk_metadata['chunk_id'] = i
-                metadatas.append(chunk_metadata)
-        
-        # Create embeddings and vector store
+
+        texts: List[str] = []
+        metadatas: List[Dict] = []
+
+        for doc in all_docs:
+            chunks = splitter.split_text(doc["content"])
+            for idx, txt_chunk in enumerate(chunks):
+                texts.append(txt_chunk)
+                md = doc["metadata"].copy()
+                md["chunk_id"] = idx
+                metadatas.append(md)
+
+        # 3) create embeddings + FAISS store
         embeddings = OpenAIEmbeddings()
         document_store = FAISS.from_texts(texts, embeddings, metadatas=metadatas)
-        
-        # Save metadata
+
+        # 4) collect & save metadata
         document_metadata = {
-            'total_documents': len(all_documents),
-            'static_documents': len(static_docs),
-            'uploaded_documents': len(uploaded_docs),
-            'total_chunks': len(texts),
-            'files': [doc['metadata']['filename'] for doc in all_documents]
+            "total_documents": len(all_docs),
+            "static_documents": len(static_docs),
+            "uploaded_documents": len(uploaded_docs),
+            "total_chunks": len(texts),
+            "files": [doc["metadata"]["filename"] for doc in all_docs],
         }
-        
-        # Save vector store
+
         document_store.save_local(str(VECTOR_STORE_PATH))
-        
-        with open(VECTOR_STORE_PATH / "metadata.json", 'w') as f:
-            json.dump(document_metadata, f, indent=2)
-        
-        print(f"Document store initialized with {len(all_documents)} documents")
+        (VECTOR_STORE_PATH / "metadata.json").write_text(
+            json.dumps(document_metadata, indent=2), encoding="utf-8"
+        )
+
+        print(f"Document store initialized: {len(all_docs)} files, {len(texts)} chunks.")
         return True
-        
+
     except Exception as e:
         print(f"Error initializing document store: {str(e)}")
         return False
 
 
-def load_existing_document_store():
-    """Load existing vector store if available."""
+# ──────────────────────────────────────────────────────────────────────────────
+# Helper: try reloading an existing FAISS index from disk
+# ──────────────────────────────────────────────────────────────────────────────
+def load_existing_document_store() -> bool:
+    """If a FAISS index already exists on disk, load it into memory."""
     global document_store, document_metadata
-    
+
     try:
-        if (VECTOR_STORE_PATH / "index.faiss").exists():
+        # Check for index presence (FAISS by default writes "index.faiss" under the folder)
+        index_file = VECTOR_STORE_PATH / "index.faiss"
+        if index_file.exists():
             embeddings = OpenAIEmbeddings()
-            document_store = FAISS.load_local(str(VECTOR_STORE_PATH), embeddings, allow_dangerous_deserialization=True)
-            
-            if (VECTOR_STORE_PATH / "metadata.json").exists():
-                with open(VECTOR_STORE_PATH / "metadata.json", 'r') as f:
-                    document_metadata = json.load(f)
-            
+            document_store = FAISS.load_local(
+                str(VECTOR_STORE_PATH),
+                embeddings,
+                allow_dangerous_deserialization=True,
+            )
+
+            metadata_file = VECTOR_STORE_PATH / "metadata.json"
+            if metadata_file.exists():
+                document_metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+
             return True
+
     except Exception as e:
         print(f"Error loading existing document store: {str(e)}")
-    
+
     return False
 
 
-@tool(name="query_documents", description="Query and ask questions about uploaded documents and static documents in the knowledge base")
+# ──────────────────────────────────────────────────────────────────────────────
+# Tool: query_documents
+# ──────────────────────────────────────────────────────────────────────────────
+# @tool(
+#     name="query_documents",
+#     description="Query and ask questions about uploaded and static documents in the knowledge base."
+# )
 async def query_documents(
     question: Annotated[str, "The question to ask about the documents"],
     document_type: Annotated[str, "Type of documents to search: 'all', 'static', or 'uploaded'"] = "all",
-    max_results: Annotated[int, "Maximum number of relevant document chunks to consider"] = 5
+    max_results: Annotated[int, "Maximum number of relevant document chunks to return"] = 5
 ) -> str:
     """
-    Query documents in the knowledge base to answer questions.
-    
-    This tool searches through both static documents (pre-loaded) and user-uploaded documents
-    to find relevant information and answer questions.
+    1) Ensure the FAISS store is loaded (or build it if missing).
+    2) Run a similarity search for `question`.
+    3) Return the LLM’s answer + a list of source filenames.
     """
     global document_store, document_metadata
-    
+
     try:
-        # Load document store if not already loaded
+        # 1) Make sure we have an in-memory store
         if document_store is None:
             if not load_existing_document_store():
                 await initialize_document_store()
-        
+
         if document_store is None:
-            return "❌ No documents are currently available in the knowledge base. Please upload some documents first."
-        
-        # Create retrieval chain
-        model = init_chat_model("openai:gpt-4o-mini", temperature=0.3)
-        
-        # Filter by document type if specified
-        filter_dict = None
-        if document_type != "all":
-            filter_dict = {"source_type": document_type}
-        
-        # Perform similarity search
+            return "❌ No documents are currently available. Upload files and try again."
+
+        # 2) Build a retriever, with an optional filter on source_type
+        filter_kwargs = None
+        if document_type in ("static", "uploaded"):
+            filter_kwargs = {"source_type": document_type}
+
         retriever = document_store.as_retriever(
-            search_kwargs={
-                "k": max_results,
-                "filter": filter_dict
-            }
+            search_kwargs={"k": max_results, "filter": filter_kwargs}
         )
-        
-        # Create QA chain
+
+        # 3) Initialize the chat model and RetrievalQA chain
+        model = init_chat_model("openai:gpt-4o-mini", temperature=0.3)
         qa_chain = RetrievalQA.from_chain_type(
             llm=model,
             chain_type="stuff",
             retriever=retriever,
             return_source_documents=True
         )
-        
-        # Get answer
+
+        # 4) Run the chain
         result = qa_chain({"query": question})
-        
-        # Format response with sources
-        answer = result['result']
-        sources = result['source_documents']
-        
+        answer = result["result"]
+        sources = result["source_documents"]
+
+        # 5) Format the response
         response = f"📄 **Answer based on your documents:**\n\n{answer}\n\n"
-        
         if sources:
             response += "**📚 Sources:**\n"
-            seen_files = set()
-            for doc in sources:
-                filename = doc.metadata.get('filename', 'Unknown file')
-                source_type = doc.metadata.get('source_type', 'unknown')
-                if filename not in seen_files:
-                    response += f"• {filename} ({source_type})\n"
-                    seen_files.add(filename)
-        
-        # Add document store info
+            seen = set()
+            for doc_chunk in sources:
+                fname = doc_chunk.metadata.get("filename", "Unknown")
+                stype = doc_chunk.metadata.get("source_type", "unknown")
+                if fname not in seen:
+                    response += f"• {fname} ({stype})\n"
+                    seen.add(fname)
+
+        # 6) Append high-level metadata if available
         if document_metadata:
-            response += f"\n**📊 Knowledge Base Info:**\n"
+            response += "\n**📊 Knowledge Base Info:**\n"
             response += f"• Total documents: {document_metadata.get('total_documents', 0)}\n"
             response += f"• Static documents: {document_metadata.get('static_documents', 0)}\n"
             response += f"• Uploaded documents: {document_metadata.get('uploaded_documents', 0)}\n"
-        
+
         return response
-        
+
     except Exception as e:
         return f"❌ Error querying documents: {str(e)}"
 
 
-@tool(name="list_available_documents", description="List all documents currently available in the knowledge base")
+# ──────────────────────────────────────────────────────────────────────────────
+# Tool: list_available_documents
+# ──────────────────────────────────────────────────────────────────────────────
+# @tool(
+#     name="list_available_documents",
+#     description="List all documents currently available in the knowledge base."
+# )
 async def list_available_documents() -> str:
     """
-    List all documents currently available in the knowledge base.
-    Shows both static documents and user-uploaded documents.
+    Returns a formatted string listing every PDF, DOCX, and TXT in both
+    the `static` and `uploads` folders, plus a summary.
     """
     global document_metadata
-    
+
     try:
-        # Load document store if not already loaded
+        # Ensure the store is at least "known" (so document_metadata is populated)
         if document_store is None:
             if not load_existing_document_store():
                 await initialize_document_store()
-        
-        if not document_metadata:
-            return "📄 No documents are currently available in the knowledge base."
-        
-        response = "📚 **Available Documents in Knowledge Base:**\n\n"
-        
-        # Get file info from directories
+
+        # Gather file lists
         static_files = []
         uploaded_files = []
-        
         if STATIC_DOCS_PATH.exists():
-            static_files = [f.name for f in STATIC_DOCS_PATH.iterdir() 
-                          if f.is_file() and f.suffix.lower() in ['.pdf', '.docx', '.txt']]
-        
+            static_files = [
+                f.name
+                for f in STATIC_DOCS_PATH.iterdir()
+                if f.is_file() and f.suffix.lower() in [".pdf", ".docx", ".txt"]
+            ]
         if UPLOADS_DOCS_PATH.exists():
-            uploaded_files = [f.name for f in UPLOADS_DOCS_PATH.iterdir() 
-                            if f.is_file() and f.suffix.lower() in ['.pdf', '.docx', '.txt']]
-        
-        # Static documents
+            uploaded_files = [
+                f.name
+                for f in UPLOADS_DOCS_PATH.iterdir()
+                if f.is_file() and f.suffix.lower() in [".pdf", ".docx", ".txt"]
+            ]
+
+        # Build the response
+        if not (static_files or uploaded_files):
+            return "📄 No documents are currently available in the knowledge base."
+
+        response = "📚 **Available Documents in Knowledge Base:**\n\n"
+
         if static_files:
             response += "**📁 Static Documents (Pre-loaded):**\n"
-            for filename in static_files:
-                response += f"• {filename}\n"
+            for fn in static_files:
+                response += f"• {fn}\n"
             response += "\n"
-        
-        # Uploaded documents
+
         if uploaded_files:
             response += "**📤 Uploaded Documents:**\n"
-            for filename in uploaded_files:
-                response += f"• {filename}\n"
+            for fn in uploaded_files:
+                response += f"• {fn}\n"
             response += "\n"
-        
+
         # Summary
-        response += f"**📊 Summary:**\n"
-        response += f"• Total documents: {len(static_files) + len(uploaded_files)}\n"
+        total = len(static_files) + len(uploaded_files)
+        response += "**📊 Summary:**\n"
+        response += f"• Total documents: {total}\n"
         response += f"• Static documents: {len(static_files)}\n"
         response += f"• Uploaded documents: {len(uploaded_files)}\n"
-        
-        if not static_files and not uploaded_files:
-            response += "\n💡 To get started, upload some documents using the file upload feature."
-        
+
         return response
-        
+
     except Exception as e:
         return f"❌ Error listing documents: {str(e)}"
 
 
-@tool(name="refresh_document_index", description="Refresh the document index to include newly uploaded files")
+# ──────────────────────────────────────────────────────────────────────────────
+# Tool: refresh_document_index
+# ──────────────────────────────────────────────────────────────────────────────
+# @tool(
+#     name="refresh_document_index",
+#     description="Refresh the document index to include newly uploaded files."
+# )
 async def refresh_document_index() -> str:
     """
-    Refresh the document index to include any newly uploaded files.
-    Use this after uploading new documents to make them searchable.
+    Rebuilds the FAISS index from scratch, so any newly uploaded docs
+    become searchable immediately.
     """
     try:
         success = await initialize_document_store()
-        
         if success:
             return "✅ Document index refreshed successfully! All uploaded documents are now searchable."
         else:
-            return "❌ Failed to refresh document index. Please check if documents are properly uploaded."
-            
+            return "❌ Failed to refresh document index. Please verify that documents exist."
     except Exception as e:
         return f"❌ Error refreshing document index: {str(e)}"
 
 
-# Initialize document store on module load
-async def init_document_qa():
-    """Initialize the document Q&A system."""
+# ──────────────────────────────────────────────────────────────────────────────
+# On module import: asynchronously build or load the store
+# ──────────────────────────────────────────────────────────────────────────────
+async def __init_document_store_on_import():
+    # If no existing FAISS index, build now in the background
     if not load_existing_document_store():
         await initialize_document_store()
 
-# Run initialization when module is imported
+
+# If the event loop is running, schedule the init; otherwise run it directly
 try:
-    import asyncio
     loop = asyncio.get_event_loop()
     if loop.is_running():
-        # If event loop is already running, schedule the initialization
-        asyncio.create_task(init_document_qa())
+        asyncio.create_task(__init_document_store_on_import())
     else:
-        # If no event loop is running, run the initialization
-        asyncio.run(init_document_qa())
+        asyncio.run(__init_document_store_on_import())
 except Exception as e:
     print(f"Note: Document Q&A will initialize on first use. {str(e)}")
