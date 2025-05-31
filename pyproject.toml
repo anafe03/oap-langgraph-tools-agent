@@ -3,19 +3,27 @@ name = "tools_agent"
 version = "0.1.0"
 description = "LangGraph tools agent with MCP and a RAG tool"
 authors = [
-    { name = "langchain-ai" }, 
+  { name = "langchain-ai" },
 ]
 requires-python = ">=3.11.0,<3.13"
+
 dependencies = [
-    "langgraph==0.4.2",
-    "langchain-anthropic==0.3.13",
-    "langchain-core==0.3.59",
-    "langchain-openai==0.3.16",
-    "pydantic==2.11.3",
-    "langchain==0.3.25",
-    "langchain-mcp-adapters==0.1.0",
-    "supabase>=2.15.1",
-    "aiohttp>=3.8.0",
+  "langgraph==0.4.2",
+  "langchain-anthropic==0.3.13",
+  "langchain-core==0.3.59",
+  "langchain-openai==0.3.16",
+  "pydantic==2.11.3",
+  "langchain==0.3.25",
+  "langchain-mcp-adapters==0.1.0",
+  "supabase>=2.15.1",
+  "aiohttp>=3.8.0",
+
+  # Add everything that was under [tool.poetry.dependencies]:
+  "PyPDF2>=3.0",
+  "python-docx>=0.8.11",
+  "langchain-community>=0.0.20,<0.1",
+  # If you used langsmith explicitly, pin it to <0.1 to satisfy langchain-community:
+  "langsmith>=0.0.83,<0.1",
 ]
 
 [tool.setuptools]
@@ -23,17 +31,9 @@ packages = ["tools_agent"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.8.4",
-    "langgraph-api==0.2.27",
-    "langgraph-cli==0.2.10",
-    "langgraph-runtime-inmem>=0.0.11",
+  "ruff>=0.8.4",
+  "langgraph-api==0.2.27",
+  "langgraph-cli==0.2.10",
+  "langgraph-runtime-inmem>=0.0.11",
+  # (You can also move `python-docx` or other dev‐only deps here if you only need them in development.)
 ]
-[tool.poetry.dependencies]
-python = "^3.10"
-fastapi = "^0.100"
-uvicorn = { extras = ["standard"], version = "^0.22" }
-PyPDF2 = "^3.0"
-python-docx = "^0.8.11"
-langchain = "^0.0.x"
-langchain-community = "^0.0.x"
-# …and so on…
