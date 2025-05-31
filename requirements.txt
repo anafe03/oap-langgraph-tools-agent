@@ -76,5 +76,6 @@ websockets==12.0
 yarl==1.15.2
 PyPDF2
 python-docx
+langchain-community
 
 #doxc==0.2.4
