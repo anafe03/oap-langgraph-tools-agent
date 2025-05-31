@@ -28,3 +28,9 @@ dev = [
     "langgraph-cli==0.2.10",
     "langgraph-runtime-inmem>=0.0.11",
 ]
+
+
+[tool.poetry.dependencies]
+python = "^3.10"        # or whatever your range is
+PyPDF2 = "^3.0"
+# …other deps…
