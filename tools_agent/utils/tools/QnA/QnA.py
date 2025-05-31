@@ -1,4 +1,4 @@
-# tools_agent/utils/tools/QnA/QnA.py - Document Q&A tools
+# tools_agent/utils/tools/QnA/QnA.py - Fixed version without auth requirement
 
 import httpx
 import asyncio
@@ -39,6 +39,7 @@ class SimpleDocumentQATool(BaseTool):
         """Query documents asynchronously"""
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
+                # No authentication needed for static documents
                 response = await client.get(f"{BACKEND_URL}/api/documents/static")
                 
                 if response.status_code == 200:
@@ -74,11 +75,15 @@ class SimpleDocumentQATool(BaseTool):
                         
                         return result
                 
+                elif response.status_code == 404:
+                    return "❌ **Document endpoint not found.** The `/api/documents/static` endpoint needs to be added to the backend server."
                 else:
-                    return f"❌ Error accessing document library: {response.status_code}"
+                    return f"❌ Error accessing document library: HTTP {response.status_code}"
                 
         except httpx.TimeoutException:
             return "⏱️ Request timed out while accessing documents. Please try again."
+        except httpx.ConnectError:
+            return "🔌 Cannot connect to the document server. Please check if the backend is running."
         except Exception as e:
             return f"❌ Error accessing documents: {str(e)}"
     
@@ -97,6 +102,7 @@ class ListDocumentsTool(BaseTool):
         """List documents asynchronously"""
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
+                # No authentication needed for static documents
                 response = await client.get(f"{BACKEND_URL}/api/documents/static")
                 
                 if response.status_code == 200:
@@ -127,9 +133,15 @@ class ListDocumentsTool(BaseTool):
                     
                     return result
                 
+                elif response.status_code == 404:
+                    return "❌ **Document endpoint not found.** Please add the `/api/documents/static` endpoint to your backend server."
                 else:
-                    return f"❌ Error loading document library: {response.status_code}"
+                    return f"❌ Error loading document library: HTTP {response.status_code}"
                 
+        except httpx.TimeoutException:
+            return "⏱️ Request timed out while loading documents. Please try again."
+        except httpx.ConnectError:
+            return "🔌 Cannot connect to the document server. Please check if the backend is running."
         except Exception as e:
             return f"❌ Error listing documents: {str(e)}"
     
