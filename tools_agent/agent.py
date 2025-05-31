@@ -11,7 +11,7 @@ from tools_agent.utils.token import fetch_tokens
 from tools_agent.utils.tools import wrap_mcp_authenticate_tool
 
 from tools_agent.utils.tools.market import (neighborhood_activity_tracker)
-from tools_agent.utils.tools.QnA import (document_qa, query_documents, list_available_documents, refresh_document_index)
+# from tools_agent.utils.tools.QnA import (document_qa, query_documents, list_available_documents, refresh_document_index)
 # Import all existing tools
 from tools_agent.utils.tools import (
     # Listing tools
