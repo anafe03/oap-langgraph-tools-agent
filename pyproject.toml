@@ -34,3 +34,9 @@ dev = [
 python = "^3.10"        # or whatever your range is
 PyPDF2 = "^3.0"
 # …other deps…
+
+
+[tool.poetry.dependencies]
+python = "^3.x"
+langchain-community = "^0.0.x"
+# … other deps …
