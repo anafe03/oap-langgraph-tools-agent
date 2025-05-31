@@ -2,7 +2,7 @@
 
 import httpx
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Type
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
 from langchain_core.runnables import RunnableConfig
@@ -22,8 +22,8 @@ class RefreshIndexInput(BaseModel):
     pass
 
 class SimpleDocumentQATool(BaseTool):
-    name = "query_documents"
-    description = """Ask questions about documents in the static document library.
+    name: str = "query_documents"
+    description: str = """Ask questions about documents in the static document library.
     This tool can help answer questions about contracts, inspection reports, 
     property documents, and other real estate related files.
     
@@ -33,7 +33,7 @@ class SimpleDocumentQATool(BaseTool):
     - "What is mentioned about the inspection?"
     - "Summarize the main points of the contract"
     """
-    args_schema = DocumentQueryInput
+    args_schema: Type[BaseModel] = DocumentQueryInput
 
     async def _arun(self, query: str, **kwargs) -> str:
         """Query documents asynchronously"""
@@ -87,11 +87,11 @@ class SimpleDocumentQATool(BaseTool):
         return asyncio.run(self._arun(query, **kwargs))
 
 class ListDocumentsTool(BaseTool):
-    name = "list_available_documents"
-    description = """List all documents available in the static document library.
+    name: str = "list_available_documents"
+    description: str = """List all documents available in the static document library.
     Shows what documents are ready for Q&A and analysis.
     """
-    args_schema = ListDocumentsInput
+    args_schema: Type[BaseModel] = ListDocumentsInput
 
     async def _arun(self, **kwargs) -> str:
         """List documents asynchronously"""
@@ -138,11 +138,11 @@ class ListDocumentsTool(BaseTool):
         return asyncio.run(self._arun(**kwargs))
 
 class RefreshIndexTool(BaseTool):
-    name = "refresh_document_index"
-    description = """Refresh the document search index. This is a placeholder for now.
+    name: str = "refresh_document_index"
+    description: str = """Refresh the document search index. This is a placeholder for now.
     Will be implemented in the next update to enable full document search capabilities.
     """
-    args_schema = RefreshIndexInput
+    args_schema: Type[BaseModel] = RefreshIndexInput
 
     async def _arun(self, **kwargs) -> str:
         """Refresh index asynchronously"""
