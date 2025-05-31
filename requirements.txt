@@ -74,6 +74,5 @@ uvloop==0.21.0
 watchfiles==0.24.0
 websockets==12.0
 yarl==1.15.2
-PyPDF2==3.0.1
-docx2txt==0.1.4
+PyPDF2
 doxc==0.1.2
