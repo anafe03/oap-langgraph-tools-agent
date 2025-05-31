@@ -6,8 +6,8 @@ import asyncio
 from typing import List, Dict, Annotated
 from pathlib import Path
 
-import PyPDF2
-import docx
+#import PyPDF2
+#import docx
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
