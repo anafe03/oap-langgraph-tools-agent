@@ -72,3 +72,63 @@ async def syndicate_listing(
         return f"✅ Listing successfully syndicated to MLS. MLS ID: {response_data.get('listing_id', 'unknown')}"
     except Exception as e:
         return f"❌ Failed to syndicate listing: {str(e)}"
+    
+
+
+# Supabase configuration via environment variables
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://gdmdurzaeezcrgrmtabx.supabase.co")
+SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+#@tool(
+#    name="insert_listing",
+#    description=(
+#        "Insert a new FSBO listing into the Supabase 'listings' table. "
+#        "Arguments: {user_id: str, title: str, address: str, price: float, bedrooms: int, "
+#        "bathrooms: float, square_feet: int, description: str, horse_friendly: str}."
+#    )
+#)
+async def insert_listing(
+    user_id: Annotated[str, "The seller's user_id"],
+    title: Annotated[str, "Listing title"],
+    address: Annotated[str, "Property address"],
+    price: Annotated[float, "Asking price"],
+    bedrooms: Annotated[int, "Number of bedrooms"],
+    bathrooms: Annotated[float, "Number of bathrooms"],
+    square_feet: Annotated[int, "Square footage"],
+    description: Annotated[str, "Detailed description"],
+    horse_friendly: Annotated[str, "'yes' or 'no'"]
+) -> str:
+    """
+    Calls the Supabase REST API to insert one row into the 'listings' table,
+    returns the inserted record or an error message.
+    """
+    if not SERVICE_ROLE_KEY:
+        return "❌ Environment variable SUPABASE_SERVICE_ROLE_KEY is not set."
+
+    url = f"{SUPABASE_URL}/rest/v1/listings?return=representation"
+    headers = {
+        "apikey": SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = [{
+        "user_id": user_id,
+        "title": title,
+        "address": address,
+        "price": price,
+        "bedrooms": bedrooms,
+        "bathrooms": bathrooms,
+        "sqft": square_feet,
+        "description": description,
+        "horse_friendly": horse_friendly,
+        "status": "active"
+    }]
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, json=payload) as resp:
+            text = await resp.text()
+            if resp.status >= 300:
+                return f"❌ Supabase error {resp.status}: {text}"
+            inserted = json.loads(text)
+            # Supabase returns a list of inserted rows
+            return f"✅ Inserted listing: {inserted[0]}"

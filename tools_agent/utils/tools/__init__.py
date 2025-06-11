@@ -4,7 +4,7 @@ Located at: tools_agent/utils/tools/__init__.py
 """
 
 # Listing tools
-from .listing.creation import make_listing, syndicate_listing
+from .listing.creation import make_listing, syndicate_listing, insert_listing
 
 # Market research and valuation tools
 from .market.research import market_trends
@@ -44,7 +44,8 @@ from .common.utils import *
 # Tool categories for easy organization
 LISTING_TOOLS = [
     make_listing,
-    syndicate_listing
+    syndicate_listing,
+    insert_listing
 ]
 
 MARKET_TOOLS = [
