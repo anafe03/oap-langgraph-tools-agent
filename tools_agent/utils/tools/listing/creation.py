@@ -4,6 +4,7 @@ Property listing creation and syndication tools.
 import aiohttp
 from typing import Annotated
 from langchain_core.tools import tool
+import os
 
 
 #@tool(name="make_listing", description="Create a FSBO property listing by gathering key details from the seller.")
