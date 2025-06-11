@@ -17,7 +17,7 @@ from tools_agent.utils.tools.market import (neighborhood_activity_tracker)
 from tools_agent.utils.tools import (
     # Listing tools
     make_listing,
-    syndicate_listing,
+    insert_listing,
     
     # Market research and valuation tools
     market_trends,
