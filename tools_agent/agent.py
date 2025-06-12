@@ -133,7 +133,7 @@ async def graph(config: RunnableConfig):
     tools = [
         # Core listing and market tools
         make_listing,
-        syndicate_listing,
+        insert_listing,
         market_trends,
         
         # Valuation and analysis tools
