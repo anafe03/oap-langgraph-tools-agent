@@ -9,8 +9,13 @@ import os
 
 async def get_user_id_from_request_context() -> Optional[str]:
     """Get user ID from the current request context"""
-    return getattr(get_user_id_from_request_context, '_current_user_id', None)
-
+    try:
+        import sys
+        # Get the app module where we stored the user_id
+        app_module = sys.modules.get('app') or sys.modules.get('__main__')
+        return getattr(app_module, 'current_user_id', None)
+    except:
+        return None
 #@tool(name="make_listing", description="Create a FSBO property listing by gathering key details from the seller.")
 async def make_listing(
     title: Annotated[str, "A short, attention-grabbing title for the property (e.g., 'Charming 3-Bedroom Bungalow with Large Yard')"],
