@@ -85,20 +85,26 @@ SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 async def insert_listing(
     user_id: Annotated[str, "The seller's user_id"],
     title: Annotated[str, "Listing title"],
-    address: Annotated[str, "Property address"],
+    address: Annotated[str, "Full street address"],
+    city: Annotated[str, "City"],
+    state: Annotated[str, "State"],
+    zip_code: Annotated[str, "Zip code"],
     price: Annotated[float, "Asking price"],
     bedrooms: Annotated[int, "Number of bedrooms"],
     bathrooms: Annotated[float, "Number of bathrooms"],
-    square_feet: Annotated[int, "Square footage"],
+    sqft: Annotated[int, "Square footage"],
+    lot_size: Annotated[str, "Lot size (e.g. '0.25 acres')"],
+    year_built: Annotated[int, "Year built"],
+    property_type: Annotated[str, "Property type (e.g. 'Single Family')"],
     description: Annotated[str, "Detailed description"],
-    horse_friendly: Annotated[str, "'yes' or 'no'"]
+    features: Annotated[dict, "Any extra features (as JSON)"] = None,
+    images: Annotated[list, "Array of image URLs"] = None,
 ) -> str:
     """
-    Calls the Supabase REST API to insert one row into the 'listings' table,
-    returns the inserted record or an error message.
+    Inserts a new FSBO listing into Supabase with the correct schema.
     """
     if not SERVICE_ROLE_KEY:
-        return "❌ Environment variable SUPABASE_SERVICE_ROLE_KEY is not set."
+        return "❌ SUPABASE_SERVICE_ROLE_KEY is not set."
 
     url = f"{SUPABASE_URL}/rest/v1/listings"
     headers = {
@@ -108,24 +114,33 @@ async def insert_listing(
         "Prefer": "return=representation"
     }
 
-    payload = [{
+    # Build the row, leaving out any None fields
+    row = {
         "user_id": user_id,
         "title": title,
         "address": address,
+        "city": city,
+        "state": state,
+        "zip_code": zip_code,
         "price": price,
         "bedrooms": bedrooms,
         "bathrooms": bathrooms,
-        "sqft": square_feet,
+        "sqft": sqft,
+        "lot_size": lot_size,
+        "year_built": year_built,
+        "property_type": property_type,
         "description": description,
-        "horse_friendly": horse_friendly,
         "status": "active"
-    }]
+    }
+    if features is not None:
+        row["features"] = features
+    if images is not None:
+        row["images"] = images
 
     async with aiohttp.ClientSession() as session:
-        async with session.post(url, headers=headers, json=payload) as resp:
+        async with session.post(url, headers=headers, json=[row]) as resp:
             text = await resp.text()
             if resp.status >= 300:
                 return f"❌ Supabase error {resp.status}: {text}"
             inserted = json.loads(text)
-            # Supabase returns a list of inserted rows
             return f"✅ Inserted listing: {inserted[0]}"
