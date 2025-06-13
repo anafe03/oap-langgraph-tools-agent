@@ -5,7 +5,8 @@ import aiohttp
 from typing import Annotated
 from langchain_core.tools import tool
 import os
-
+import json
+ 
 
 #@tool(name="make_listing", description="Create a FSBO property listing by gathering key details from the seller.")
 async def make_listing(
