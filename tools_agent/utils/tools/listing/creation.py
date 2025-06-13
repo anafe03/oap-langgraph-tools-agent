@@ -2,10 +2,14 @@
 Property listing creation and syndication tools.
 """
 import aiohttp
-from typing import Annotated
+from typing import Annotated, Optional
 from langchain_core.tools import tool
 import os
 
+
+async def get_user_id_from_request_context() -> Optional[str]:
+    """Get user ID from the current request context"""
+    return getattr(get_user_id_from_request_context, '_current_user_id', None)
 
 #@tool(name="make_listing", description="Create a FSBO property listing by gathering key details from the seller.")
 async def make_listing(
