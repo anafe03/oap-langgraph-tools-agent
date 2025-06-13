@@ -100,12 +100,14 @@ async def insert_listing(
     if not SERVICE_ROLE_KEY:
         return "❌ Environment variable SUPABASE_SERVICE_ROLE_KEY is not set."
 
-    url = f"{SUPABASE_URL}/rest/v1/listings?return=representation"
+    url = f"{SUPABASE_URL}/rest/v1/listings"
     headers = {
         "apikey": SERVICE_ROLE_KEY,
         "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
     }
+
     payload = [{
         "user_id": user_id,
         "title": title,
