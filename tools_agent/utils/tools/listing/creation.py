@@ -2,21 +2,9 @@
 Property listing creation and syndication tools.
 """
 import aiohttp
-from typing import Annotated, Optional
+from typing import Annotated
 from langchain_core.tools import tool
 import os
-
-
-async def get_user_id_from_request_context() -> Optional[str]:
-    """Get user ID from the current request context"""
-    try:
-        import sys
-        # Get the app module where we stored the user_id
-        app_module = sys.modules.get('app') or sys.modules.get('__main__')
-        return getattr(app_module, 'current_user_id', None)
-    except:
-        return None
-
 
 
 #@tool(name="make_listing", description="Create a FSBO property listing by gathering key details from the seller.")
@@ -92,14 +80,7 @@ async def syndicate_listing(
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://gdmdurzaeezcrgrmtabx.supabase.co")
 SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-#@tool(
-#    name="insert_listing",
-#    description=(
-#        "Insert a new FSBO listing into the Supabase 'listings' table. "
-#        "Arguments: {user_id: str, title: str, address: str, price: float, bedrooms: int, "
-#        "bathrooms: float, square_feet: int, description: str, horse_friendly: str}."
-#    )
-#)
+#@tool(name="insert_listing",description=("Insert a new FSBO listing into the Supabase 'listings' table. ""Arguments: {user_id: str, title: str, address: str, price: float, bedrooms: int, ""bathrooms: float, square_feet: int, description: str, horse_friendly: str}."))
 async def insert_listing(
     user_id: Annotated[str, "The seller's user_id"],
     title: Annotated[str, "Listing title"],
