@@ -16,7 +16,8 @@ async def make_listing(
     bedrooms: Annotated[int, "Number of bedrooms"],
     bathrooms: Annotated[float, "Number of bathrooms"],
     square_feet: Annotated[int, "Approximate square footage of the home"],
-    description: Annotated[str, "Detailed description of the property, including features, updates, or neighborhood highlights"]
+    description: Annotated[str, "Detailed description of the property, including features, updates, or neighborhood highlights"],
+    horse_friendly: Annotated[str, "Do they allow horses?"]
 ) -> str:
     """Generate a formatted FSBO property listing based on user inputs."""
     
@@ -28,7 +29,7 @@ async def make_listing(
 🛏️ **Bedrooms:** {bedrooms}
 🛁 **Bathrooms:** {bathrooms}
 📐 **Square Feet:** {square_feet:,}
-
+🐎 **Horse Friendly:** {horse_friendly}
 
 📝 **Description:**
 {description}
