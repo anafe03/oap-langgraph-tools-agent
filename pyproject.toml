@@ -8,35 +8,33 @@ authors = [
 requires-python = ">=3.11.0,<3.13"
 
 dependencies = [
-  "langgraph>=0.6.2",           # Updated to newer version
-  "langchain-anthropic>=0.3.18",
-  "langchain-core>=0.3.72", 
-  "langchain-openai>=0.3.28",
+  "langgraph==0.4.2",
+  "langchain-anthropic==0.3.13",
+  "langchain-core==0.3.59",
+  "langchain-openai==0.3.16",
   "pydantic==2.11.3",
-  "langchain>=0.3.27",
-  "mcp>=1.9.1",                 # Updated MCP version
+  "langchain==0.3.25",
+  "langchain-mcp-adapters==0.1.0",
   "supabase>=2.15.1",
   "aiohttp>=3.8.0"
+
+
+
+ 
+
+
+
+
 ]
 
 [tool.setuptools]
-# Explicitly specify only the tools_agent package
 packages = ["tools_agent"]
-
-[tool.setuptools.package-dir]
-# Make sure setuptools knows where to find the package
-"" = "."
-
-[tool.setuptools.package-data]
-# Include any additional files in tools_agent if needed
-"tools_agent" = ["**/*.py", "**/*.json", "**/*.yaml", "**/*.yml"]
 
 [dependency-groups]
 dev = [
-  "langgraph-cli[inmem]>=0.3.6",
   "ruff>=0.8.4",
+  "langgraph-api==0.2.27",
+  "langgraph-cli==0.2.10",
+  "langgraph-runtime-inmem>=0.0.11",
+  # (You can also move `python-docx` or other dev‐only deps here if you only need them in development.)
 ]
-
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
