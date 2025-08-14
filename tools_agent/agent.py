@@ -1,59 +1,96 @@
+# tools_agent/agent.py - FIXED VERSION WITHOUT PROBLEMATIC IMPORTS
+
 import os
 from langchain_core.runnables import RunnableConfig
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from langgraph.prebuilt import create_react_agent
-from tools_agent.utils.tools import create_rag_tool
 from langchain.chat_models import init_chat_model
-from tools_agent.utils.token import fetch_tokens
-from mcp.client.streamable_http import streamablehttp_client
-from mcp import ClientSession
-from langchain_core.tools import StructuredTool
-from tools_agent.utils.tools import (
-    wrap_mcp_authenticate_tool,
-    create_langchain_mcp_tool,
-)
 
+# Import market tools with error handling
+try:
+    from tools_agent.utils.tools.market import neighborhood_activity_tracker
+except ImportError:
+    neighborhood_activity_tracker = None
 
-UNEDITABLE_SYSTEM_PROMPT = "\nIf the tool throws an error requiring authentication, provide the user with a Markdown link to the authentication page and prompt them to authenticate."
+# Import your existing real estate tools (only the ones that exist)
+try:
+    from tools_agent.utils.tools import (
+        # Listing tools
+        make_listing,
+        insert_listing,
+        
+        # Market research and valuation tools
+        market_trends,
+        generate_cma,
+        quick_property_valuation,
+        
+        # Professional finder tools
+        find_mortgage_lender,
+        find_real_estate_attorney,
+        find_title_company,
+        find_appraiser,
+        find_real_estate_photographer,
+        find_home_inspector,
+        
+        # Marketing and scheduling tools
+        schedule_open_house,
+        post_to_facebook,
+        send_open_house_emails,
+        generate_property_listing_tweet,
+        post_to_twitter,
+    )
+except ImportError as e:
+    print(f"Warning: Could not import some tools: {e}")
+    # Create empty list if imports fail
+    make_listing = None
+    insert_listing = None
+    market_trends = None
+    generate_cma = None
+    quick_property_valuation = None
+    find_mortgage_lender = None
+    find_real_estate_attorney = None
+    find_title_company = None
+    find_appraiser = None
+    find_real_estate_photographer = None
+    find_home_inspector = None
+    schedule_open_house = None
+    post_to_facebook = None
+    send_open_house_emails = None
+    generate_property_listing_tweet = None
+    post_to_twitter = None
+
+# Import Q&A tools with error handling
+try:
+    from tools_agent.utils.tools.QnA import (
+        query_documents,
+        list_available_documents,
+        refresh_document_index
+    )
+except ImportError:
+    print("Warning: Q&A tools not available")
+    query_documents = None
+    list_available_documents = None
+    refresh_document_index = None
+
+UNEDITABLE_SYSTEM_PROMPT = "\nIf you need specific property data or market information that you don't have access to, let the user know and guide them on how to find that information through available tools."
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are a helpful assistant that has access to a variety of tools."
+    "You are a knowledgeable and supportive AI real estate agent named Vesty that helps homeowners navigate the For Sale By Owner (FSBO) process. Greet the user and introduce yourself. "
+    "You have access to comprehensive tools that let you create property listings, find professional services, generate market analysis, schedule showings, provide pricing guidance, "
+    "analyze documents, and answer questions about uploaded files. "
+    "When users ask for help, use the appropriate tools and always make sure to inform them of the next steps in their FSBO journey. "
+    "You can also help users analyze documents they upload - contracts, inspection reports, market data, or any real estate related documents. "
+    "Your goal is to assist sellers in effectively marketing and managing their property sale without needing a traditional agent, while connecting them with the right professionals when needed."
 )
-
-
-class RagConfig(BaseModel):
-    rag_url: Optional[str] = None
-    """The URL of the rag server"""
-    collections: Optional[List[str]] = None
-    """The collections to use for rag"""
-
-
-class MCPConfig(BaseModel):
-    url: Optional[str] = Field(
-        default=None,
-        optional=True,
-    )
-    """The URL of the MCP server"""
-    tools: Optional[List[str]] = Field(
-        default=None,
-        optional=True,
-    )
-    """The tools to make available to the LLM"""
-    auth_required: Optional[bool] = Field(
-        default=False,
-        optional=True,
-    )
-    """Whether the MCP server requires authentication"""
-
 
 class GraphConfigPydantic(BaseModel):
     model_name: Optional[str] = Field(
-        default="openai:gpt-4o",
+        default="anthropic:claude-3-5-sonnet-latest",
         metadata={
             "x_oap_ui_config": {
                 "type": "select",
-                "default": "openai:gpt-4o",
+                "default": "anthropic:claude-3-5-sonnet-latest",
                 "description": "The model to use in all generations",
                 "options": [
                     {
@@ -118,38 +155,9 @@ class GraphConfigPydantic(BaseModel):
             }
         },
     )
-    mcp_config: Optional[MCPConfig] = Field(
-        default=None,
-        optional=True,
-        metadata={
-            "x_oap_ui_config": {
-                "type": "mcp",
-                # Here is where you would set the default tools.
-                # "default": {
-                #     "tools": ["Math_Divide", "Math_Mod"]
-                # }
-            }
-        },
-    )
-    rag: Optional[RagConfig] = Field(
-        default=None,
-        optional=True,
-        metadata={
-            "x_oap_ui_config": {
-                "type": "rag",
-                # Here is where you would set the default collection. Use collection IDs
-                # "default": {
-                #     "collections": [
-                #         "fd4fac19-886c-4ac8-8a59-fff37d2b847f",
-                #         "659abb76-fdeb-428a-ac8f-03b111183e25",
-                #     ]
-                # },
-            }
-        },
-    )
-
 
 def get_api_key_for_model(model_name: str, config: RunnableConfig):
+    """Get API key for the specified model"""
     model_name = model_name.lower()
     model_to_key = {
         "openai:": "OPENAI_API_KEY",
@@ -160,89 +168,69 @@ def get_api_key_for_model(model_name: str, config: RunnableConfig):
                     if model_name.startswith(prefix)), None)
     if not key_name:
         return None
+    
+    # Try to get from config first
     api_keys = config.get("configurable", {}).get("apiKeys", {})
     if api_keys and api_keys.get(key_name) and len(api_keys[key_name]) > 0:
         return api_keys[key_name]
+    
     # Fallback to environment variable
     return os.getenv(key_name)
 
-
 async def graph(config: RunnableConfig):
+    """Create the agent graph with your real estate tools"""
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
+    
+    # Build tools list - only add tools that exist and are callable
     tools = []
+    
+    # List of tool variables to check
+    available_tools = [
+        make_listing,
+        insert_listing,
+        market_trends,
+        generate_cma,
+        quick_property_valuation,
+        find_mortgage_lender,
+        find_real_estate_attorney,
+        find_title_company,
+        find_appraiser,
+        find_real_estate_photographer,
+        find_home_inspector,
+        schedule_open_house,
+        post_to_facebook,
+        send_open_house_emails,
+        generate_property_listing_tweet,
+        post_to_twitter,
+    ]
+    
+    # Add market tools if available
+    if neighborhood_activity_tracker:
+        available_tools.append(neighborhood_activity_tracker)
 
-    supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
-    if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and supabase_token:
-        for collection in cfg.rag.collections:
-            rag_tool = await create_rag_tool(
-                cfg.rag.rag_url, collection, supabase_token
-            )
-            tools.append(rag_tool)
+    # Add Q&A tools if available
+    if query_documents:
+        available_tools.extend([
+            query_documents,
+            list_available_documents,
+            refresh_document_index
+        ])
+    
+    # Filter valid tools
+    for tool in available_tools:
+        if tool and callable(tool):
+            tools.append(tool)
+            print(f"✅ Added tool: {getattr(tool, 'name', getattr(tool, '__name__', 'unknown'))}")
+        elif tool is not None:
+            print(f"⚠️ Skipping invalid tool: {tool}")
+    
+    print(f"🔧 Total tools configured: {len(tools)}")
+    
+    # If no tools available, create a minimal agent
+    if not tools:
+        print("⚠️ No tools available, creating minimal agent")
 
-    if cfg.mcp_config and cfg.mcp_config.auth_required:
-        mcp_tokens = await fetch_tokens(config)
-    else:
-        mcp_tokens = None
-    if (
-        cfg.mcp_config
-        and cfg.mcp_config.url
-        and cfg.mcp_config.tools
-        and (mcp_tokens or not cfg.mcp_config.auth_required)
-    ):
-        server_url = cfg.mcp_config.url.rstrip("/") + "/mcp"
-
-        tool_names_to_find = set(cfg.mcp_config.tools)
-        fetched_mcp_tools_list: list[StructuredTool] = []
-        names_of_tools_added = set()
-
-        # If the tokens are not None, then we need to add the authorization header. otherwise make headers None
-        headers = (
-            mcp_tokens is not None
-            and {"Authorization": f"Bearer {mcp_tokens['access_token']}"}
-            or None
-        )
-        try:
-            async with streamablehttp_client(server_url, headers=headers) as streams:
-                read_stream, write_stream, _ = streams
-                async with ClientSession(read_stream, write_stream) as session:
-                    await session.initialize()
-
-                    page_cursor = None
-
-                    while True:
-                        tool_list_page = await session.list_tools(cursor=page_cursor)
-
-                        if not tool_list_page or not tool_list_page.tools:
-                            break
-
-                        for mcp_tool in tool_list_page.tools:
-                            if not tool_names_to_find or (
-                                mcp_tool.name in tool_names_to_find
-                                and mcp_tool.name not in names_of_tools_added
-                            ):
-                                langchain_tool = create_langchain_mcp_tool(
-                                    mcp_tool, mcp_server_url=server_url, headers=headers
-                                )
-                                fetched_mcp_tools_list.append(
-                                    wrap_mcp_authenticate_tool(langchain_tool)
-                                )
-                                if tool_names_to_find:
-                                    names_of_tools_added.add(mcp_tool.name)
-
-                        page_cursor = tool_list_page.nextCursor
-
-                        if not page_cursor:
-                            break
-                        if tool_names_to_find and len(names_of_tools_added) == len(
-                            tool_names_to_find
-                        ):
-                            break
-
-                    tools.extend(fetched_mcp_tools_list)
-        except Exception as e:
-            print(f"Failed to fetch MCP tools: {e}")
-            pass
-
+    # Initialize the model with proper API key handling
     model = init_chat_model(
         cfg.model_name,
         temperature=cfg.temperature,
@@ -250,9 +238,10 @@ async def graph(config: RunnableConfig):
         api_key=get_api_key_for_model(cfg.model_name, config) or "No token found"
     )
 
+    # Create the react agent with config_schema (since you said it worked before)
     return create_react_agent(
         prompt=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT,
         model=model,
         tools=tools,
-  
+        config_schema=GraphConfigPydantic,  # Keeping this since you said it worked
     )
