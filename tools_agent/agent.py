@@ -243,5 +243,5 @@ async def graph(config: RunnableConfig):
         prompt=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT,
         model=model,
         tools=tools,
-        config_schema=GraphConfigPydantic,  # Keeping this since you said it worked
+        #config_schema=GraphConfigPydantic,  # Keeping this since you said it worked
     )
