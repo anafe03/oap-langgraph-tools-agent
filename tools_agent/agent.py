@@ -176,97 +176,86 @@ def get_api_key_for_model(model_name: str, config: RunnableConfig):
     
     # Fallback to environment variable
     return os.getenv(key_name)
+
 async def graph(config: RunnableConfig):
-    """Create the agent graph with your real estate tools"""
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
     
-    # Build tools list - only add tools that exist and are callable
-    tools = []
-    
-    # List of tool variables to check
-    available_tools = [
+    # Complete list of tools including new Q&A tools
+    tools = [
+        # Core listing and market tools
         make_listing,
         insert_listing,
         market_trends,
+        
+        # Valuation and analysis tools
         generate_cma,
         quick_property_valuation,
+        
+        # Professional finder tools
         find_mortgage_lender,
         find_real_estate_attorney,
         find_title_company,
         find_appraiser,
         find_real_estate_photographer,
         find_home_inspector,
+        
+        # Marketing and scheduling tools
         schedule_open_house,
         post_to_facebook,
         send_open_house_emails,
         generate_property_listing_tweet,
         post_to_twitter,
+        
+        # NEW: Document Q&A tools
+        query_documents,
+        list_available_documents,
+        refresh_document_index
     ]
-    
-    # Add market tools if available
-    if neighborhood_activity_tracker:
-        available_tools.append(neighborhood_activity_tracker)
 
-    # Add Q&A tools if available
-    if query_documents:
-        available_tools.extend([
-            query_documents,
-            list_available_documents,
-            refresh_document_index
+    # RAG tools (optional)
+    supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
+    if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and supabase_token:
+        for collection in cfg.rag.collections:
+            rag_tool = await create_rag_tool(cfg.rag.rag_url, collection, supabase_token)
+            tools.append(rag_tool)
+
+    # MCP tools (optional)
+    if cfg.mcp_config and cfg.mcp_config.url and cfg.mcp_config.tools and (mcp_tokens := await fetch_tokens(config)):
+        mcp_client = MultiServerMCPClient(
+            connections={
+                "mcp_server": {
+                    "transport": "streamable_http",
+                    "url": cfg.mcp_config.url.rstrip("/") + "/mcp",
+                    "headers": {"Authorization": f"Bearer {mcp_tokens['access_token']}"},
+                }
+            }
+        )
+        tools.extend([
+            wrap_mcp_authenticate_tool(tool)
+            for tool in await mcp_client.get_tools()
+            if tool.name in cfg.mcp_config.tools
         ])
-    
-    # Filter valid tools
-    for tool in available_tools:
-        if tool and callable(tool):
-            tools.append(tool)
-            print(f"✅ Added tool: {getattr(tool, 'name', getattr(tool, '__name__', 'unknown'))}")
-        elif tool is not None:
-            print(f"⚠️ Skipping invalid tool: {tool}")
-    
-    print(f"🔧 Total tools configured: {len(tools)}")
-    
-    # If no tools available, create a minimal agent
-    if not tools:
-        print("⚠️ No tools available, creating minimal agent")
 
-    # Initialize the model with proper API key handling
     model = init_chat_model(
         cfg.model_name,
         temperature=cfg.temperature,
         max_tokens=cfg.max_tokens,
-        api_key=get_api_key_for_model(cfg.model_name, config) or "No token found"
     )
 
-    # Try different create_react_agent signatures based on LangGraph version
-    system_message = cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT
+    # LangGraph 0.4.x compatible signature
+    from langchain_core.messages import SystemMessage
     
     try:
-        # Modern LangGraph signature (0.2.x+)
-        from langchain_core.messages import SystemMessage
+        # Try the new 0.4.x signature
         return create_react_agent(
             model=model,
             tools=tools,
-            messages_modifier=SystemMessage(content=system_message)
+            messages_modifier=SystemMessage(content=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT)
         )
-    except TypeError as e:
-        print(f"⚠️ Modern signature failed: {e}")
-        
-        try:
-            # Older signature with system_prompt
-            return create_react_agent(
-                model=model,
-                tools=tools,
-                system_prompt=system_message
-            )
-        except TypeError as e:
-            print(f"⚠️ system_prompt signature failed: {e}")
-            
-            try:
-                # Even older signature
-                return create_react_agent(
-                    model=model,
-                    tools=tools
-                )
-            except Exception as e:
-                print(f"❌ All create_react_agent signatures failed: {e}")
-                raise
+    except TypeError:
+        # Fallback to older signature if new one fails
+        return create_react_agent(
+            model=model,
+            tools=tools,
+            system_prompt=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT
+        )
