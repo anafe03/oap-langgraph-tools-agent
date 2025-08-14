@@ -176,7 +176,6 @@ def get_api_key_for_model(model_name: str, config: RunnableConfig):
     
     # Fallback to environment variable
     return os.getenv(key_name)
-
 async def graph(config: RunnableConfig):
     """Create the agent graph with your real estate tools"""
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
@@ -238,10 +237,36 @@ async def graph(config: RunnableConfig):
         api_key=get_api_key_for_model(cfg.model_name, config) or "No token found"
     )
 
-    # Create the react agent with config_schema (since you said it worked before)
-    return create_react_agent(
-        prompt=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT,
-        model=model,
-        tools=tools,
-        #config_schema=GraphConfigPydantic,  # Keeping this since you said it worked
-    )
+    # Try different create_react_agent signatures based on LangGraph version
+    system_message = cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT
+    
+    try:
+        # Modern LangGraph signature (0.2.x+)
+        from langchain_core.messages import SystemMessage
+        return create_react_agent(
+            model=model,
+            tools=tools,
+            messages_modifier=SystemMessage(content=system_message)
+        )
+    except TypeError as e:
+        print(f"⚠️ Modern signature failed: {e}")
+        
+        try:
+            # Older signature with system_prompt
+            return create_react_agent(
+                model=model,
+                tools=tools,
+                system_prompt=system_message
+            )
+        except TypeError as e:
+            print(f"⚠️ system_prompt signature failed: {e}")
+            
+            try:
+                # Even older signature
+                return create_react_agent(
+                    model=model,
+                    tools=tools
+                )
+            except Exception as e:
+                print(f"❌ All create_react_agent signatures failed: {e}")
+                raise
