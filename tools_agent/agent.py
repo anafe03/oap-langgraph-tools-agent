@@ -1,76 +1,57 @@
-import os
+# tools_agent/agent.py - Fixed version with Q&A tools
+
 from langchain_core.runnables import RunnableConfig
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from langgraph.prebuilt import create_react_agent
+from tools_agent.utils.tools import create_rag_tool
 from langchain.chat_models import init_chat_model
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from tools_agent.utils.token import fetch_tokens
+from tools_agent.utils.tools import wrap_mcp_authenticate_tool
 
-# Import market tools with error handling
-try:
-    from tools_agent.utils.tools.market import neighborhood_activity_tracker
-except ImportError:
-    neighborhood_activity_tracker = None
+# Import market tools
+from tools_agent.utils.tools.market import (neighborhood_activity_tracker)
 
-# Import your existing real estate tools (only the ones that exist)
-try:
-    from tools_agent.utils.tools import (
-        # Listing tools
-        make_listing,
-        insert_listing,
-        
-        # Market research and valuation tools
-        market_trends,
-        generate_cma,
-        quick_property_valuation,
-        
-        # Professional finder tools
-        find_mortgage_lender,
-        find_real_estate_attorney,
-        find_title_company,
-        find_appraiser,
-        find_real_estate_photographer,
-        find_home_inspector,
-        
-        # Marketing and scheduling tools
-        schedule_open_house,
-        post_to_facebook,
-        send_open_house_emails,
-        generate_property_listing_tweet,
-        post_to_twitter,
-    )
-except ImportError as e:
-    print(f"Warning: Could not import some tools: {e}")
-    make_listing = None
-    insert_listing = None
-    market_trends = None
-    generate_cma = None
-    quick_property_valuation = None
-    find_mortgage_lender = None
-    find_real_estate_attorney = None
-    find_title_company = None
-    find_appraiser = None
-    find_real_estate_photographer = None
-    find_home_inspector = None
-    schedule_open_house = None
-    post_to_facebook = None
-    send_open_house_emails = None
-    generate_property_listing_tweet = None
-    post_to_twitter = None
+# Import all existing tools
+from tools_agent.utils.tools import (
+    # Listing tools
+    make_listing,
+    insert_listing,
+    
+    # Market research and valuation tools
+    market_trends,
+    generate_cma,
+    quick_property_valuation,
+    
+    # Professional finder tools
+    find_mortgage_lender,
+    find_real_estate_attorney,
+    find_title_company,
+    find_appraiser,
+    find_real_estate_photographer,
+    find_home_inspector,
+    
+    # Marketing and scheduling tools
+    schedule_open_house,
+    post_to_facebook,
+    send_open_house_emails,
+    generate_property_listing_tweet,
+    post_to_twitter,
+    
+    # Integration tools
+    create_rag_tool,
+    wrap_mcp_authenticate_tool,
+)
 
-# Import Q&A tools with error handling
-try:
-    from tools_agent.utils.tools.QnA import (
-        query_documents,
-        list_available_documents,
-        refresh_document_index
-    )
-except ImportError:
-    print("Warning: Q&A tools not available")
-    query_documents = None
-    list_available_documents = None
-    refresh_document_index = None
+# Import the new document Q&A tools
+from tools_agent.utils.tools.QnA import (
+    query_documents,
+    list_available_documents,
+    refresh_document_index
+)
 
-UNEDITABLE_SYSTEM_PROMPT = "\nIf you need specific property data or market information that you don't have access to, let the user know and guide them on how to find that information through available tools."
+UNEDITABLE_SYSTEM_PROMPT = "\nIf the tool throws an error requiring authentication, provide the user with a Markdown link to the authentication page and prompt them to authenticate."
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a knowledgeable and supportive AI real estate agent named Vesty that helps homeowners navigate the For Sale By Owner (FSBO) process. Greet the user and introduce yourself. "
@@ -81,26 +62,28 @@ DEFAULT_SYSTEM_PROMPT = (
     "Your goal is to assist sellers in effectively marketing and managing their property sale without needing a traditional agent, while connecting them with the right professionals when needed."
 )
 
+class RagConfig(BaseModel):
+    rag_url: Optional[str] = None
+    collections: Optional[List[str]] = None
+
+class MCPConfig(BaseModel):
+    url: Optional[str] = Field(default=None, optional=True)
+    tools: Optional[List[str]] = Field(default=None, optional=True)
+
 class GraphConfigPydantic(BaseModel):
     model_name: Optional[str] = Field(
-        default="anthropic:claude-3-5-sonnet-latest",
+        default="openai:gpt-4o",
         metadata={
             "x_oap_ui_config": {
                 "type": "select",
-                "default": "anthropic:claude-3-5-sonnet-latest",
+                "default": "openai:gpt-4o",
                 "description": "The model to use in all generations",
                 "options": [
-                    {"label": "Claude Sonnet 4", "value": "anthropic:claude-sonnet-4-0"},
                     {"label": "Claude 3.7 Sonnet", "value": "anthropic:claude-3-7-sonnet-latest"},
                     {"label": "Claude 3.5 Sonnet", "value": "anthropic:claude-3-5-sonnet-latest"},
-                    {"label": "Claude 3.5 Haiku", "value": "anthropic:claude-3-5-haiku-latest"},
-                    {"label": "o4 mini", "value": "openai:o4-mini"},
-                    {"label": "o3", "value": "openai:o3"},
-                    {"label": "o3 mini", "value": "openai:o3-mini"},
                     {"label": "GPT 4o", "value": "openai:gpt-4o"},
                     {"label": "GPT 4o mini", "value": "openai:gpt-4o-mini"},
                     {"label": "GPT 4.1", "value": "openai:gpt-4.1"},
-                    {"label": "GPT 4.1 mini", "value": "openai:gpt-4.1-mini"},
                 ],
             }
         },
@@ -140,53 +123,67 @@ class GraphConfigPydantic(BaseModel):
             }
         },
     )
-
-def get_api_key_for_model(model_name: str, config: RunnableConfig):
-    """Get API key for the specified model"""
-    model_name = model_name.lower()
-    model_to_key = {
-        "openai:": "OPENAI_API_KEY",
-        "anthropic:": "ANTHROPIC_API_KEY",
-        "google": "GOOGLE_API_KEY"
-    }
-    key_name = next((key for prefix, key in model_to_key.items() 
-                     if model_name.startswith(prefix)), None)
-    if not key_name:
-        return None
-    
-    # Try to get from config first
-    api_keys = config.get("configurable", {}).get("apiKeys", {})
-    if api_keys and api_keys.get(key_name):
-        return api_keys[key_name]
-    
-    # Fallback to environment variable
-    return os.getenv(key_name)
+    mcp_config: Optional[MCPConfig] = Field(default=None, optional=True)
+    rag: Optional[RagConfig] = Field(default=None, optional=True)
 
 async def graph(config: RunnableConfig):
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
     
-    # Complete list of tools
+    # Complete list of tools including new Q&A tools
     tools = [
+        # Core listing and market tools
         make_listing,
         insert_listing,
         market_trends,
+        
+        # Valuation and analysis tools
         generate_cma,
         quick_property_valuation,
+        
+        # Professional finder tools
         find_mortgage_lender,
         find_real_estate_attorney,
         find_title_company,
         find_appraiser,
         find_real_estate_photographer,
         find_home_inspector,
+        
+        # Marketing and scheduling tools
         schedule_open_house,
         post_to_facebook,
         send_open_house_emails,
         generate_property_listing_tweet,
         post_to_twitter,
+        
+        # NEW: Document Q&A tools
         query_documents,
         list_available_documents,
         refresh_document_index
     ]
+
+    # RAG tools (optional)
+    supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
+    if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and supabase_token:
+        for collection in cfg.rag.collections:
+            rag_tool = await create_rag_tool(cfg.rag.rag_url, collection, supabase_token)
+            tools.append(rag_tool)
+
+    # MCP tools (optional)
+    if cfg.mcp_config and cfg.mcp_config.url and cfg.mcp_config.tools and (mcp_tokens := await fetch_tokens(config)):
+        mcp_client = MultiServerMCPClient(
+            connections={
+                "mcp_server": {
+                    "transport": "streamable_http",
+                    "url": cfg.mcp_config.url.rstrip("/") + "/mcp",
+                    "headers": {"Authorization": f"Bearer {mcp_tokens['access_token']}"},
+                }
+            }
+        )
+        tools.extend([
+            wrap_mcp_authenticate_tool(tool)
+            for tool in await mcp_client.get_tools()
+            if tool.name in cfg.mcp_config.tools
+        ])
 
     model = init_chat_model(
         cfg.model_name,
@@ -194,17 +191,9 @@ async def graph(config: RunnableConfig):
         max_tokens=cfg.max_tokens,
     )
 
-    # LangGraph 0.4.x compatible signature
-    from langchain_core.messages import SystemMessage
-    try:
-        return create_react_agent(
-            model=model,
-            tools=tools,
-            messages_modifier=SystemMessage(content=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT)
-        )
-    except TypeError:
-        return create_react_agent(
-            model=model,
-            tools=tools,
-            system_prompt=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT
-        )
+    return create_react_agent(
+        prompt=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT,
+        model=model,
+        tools=tools,
+        config_schema=GraphConfigPydantic,
+    )
