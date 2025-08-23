@@ -17,6 +17,7 @@ dependencies = [
   "langchain-mcp-adapters==0.1.0",
   "supabase>=2.15.1",
   "aiohttp>=3.8.0",
+  "PyPDF2>=3.0.0",
   # Pin the problematic packages to working versions
   "langgraph-checkpoint==2.0.25",
   "langgraph-prebuilt==0.1.8",
