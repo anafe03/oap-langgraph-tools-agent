@@ -46,12 +46,7 @@ from tools_agent.utils.tools.integrations.rag import (
     list_fsbo_documents
 )
 
-# Import the document Q&A tools
-from tools_agent.utils.tools.QnA import (
-    query_documents,
-    list_available_documents,
-    refresh_document_index
-)
+# Removed old Q&A tools to avoid confusion with RAG tools
 
 UNEDITABLE_SYSTEM_PROMPT = "\nIf the tool throws an error requiring authentication, provide the user with a Markdown link to the authentication page and prompt them to authenticate."
 
@@ -158,14 +153,9 @@ async def graph(config: RunnableConfig):
         generate_property_listing_tweet,
         post_to_twitter,
         
-        # FSBO RAG tools
+        # FSBO RAG tools (only these for document handling)
         search_fsbo_knowledge,
         list_fsbo_documents,
-        
-        # Document Q&A tools
-        query_documents,
-        list_available_documents,
-        refresh_document_index
     ]
 
     # RAG tools (optional - for external RAG services)
