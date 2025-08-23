@@ -1,14 +1,12 @@
-# tools_agent/agent.py - Fixed version with Q&A tools
+# tools_agent/agent.py - Fixed version with RAG tools
 
 from langchain_core.runnables import RunnableConfig
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from langgraph.prebuilt import create_react_agent
-from tools_agent.utils.tools import create_rag_tool
 from langchain.chat_models import init_chat_model
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from tools_agent.utils.token import fetch_tokens
-from tools_agent.utils.tools import wrap_mcp_authenticate_tool
 
 # Import market tools
 from tools_agent.utils.tools.market import (neighborhood_activity_tracker)
@@ -38,13 +36,17 @@ from tools_agent.utils.tools import (
     send_open_house_emails,
     generate_property_listing_tweet,
     post_to_twitter,
-    
-    # Integration tools
-    create_rag_tool,
-    wrap_mcp_authenticate_tool,
 )
 
-# Import the new document Q&A tools
+# Import RAG tools from integrations
+from tools_agent.utils.tools.integrations.rag import (
+    create_rag_tool,
+    wrap_mcp_authenticate_tool,
+    search_fsbo_knowledge,
+    list_fsbo_documents
+)
+
+# Import the document Q&A tools
 from tools_agent.utils.tools.QnA import (
     query_documents,
     list_available_documents,
@@ -57,8 +59,9 @@ DEFAULT_SYSTEM_PROMPT = (
     "You are a knowledgeable and supportive AI real estate agent named Vesty that helps homeowners navigate the For Sale By Owner (FSBO) process. Greet the user and introduce yourself. "
     "You have access to comprehensive tools that let you create property listings, find professional services, generate market analysis, schedule showings, provide pricing guidance, "
     "analyze documents, and answer questions about uploaded files. "
+    "You also have access to a FSBO knowledge base with detailed guides about selling homes without an agent, legal requirements, pricing strategies, and closing processes. "
     "When users ask for help, use the appropriate tools and always make sure to inform them of the next steps in their FSBO journey. "
-    "You can also help users analyze documents they upload - contracts, inspection reports, market data, or any real estate related documents. "
+    "Use search_fsbo_knowledge when users ask about FSBO processes, legal requirements, pricing, marketing, or any selling-related questions. "
     "Your goal is to assist sellers in effectively marketing and managing their property sale without needing a traditional agent, while connecting them with the right professionals when needed."
 )
 
@@ -129,7 +132,7 @@ class GraphConfigPydantic(BaseModel):
 async def graph(config: RunnableConfig):
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
     
-    # Complete list of tools including new Q&A tools
+    # Complete list of tools including RAG tools
     tools = [
         # Core listing and market tools
         make_listing,
@@ -155,13 +158,17 @@ async def graph(config: RunnableConfig):
         generate_property_listing_tweet,
         post_to_twitter,
         
-        # NEW: Document Q&A tools
+        # FSBO RAG tools
+        search_fsbo_knowledge,
+        list_fsbo_documents,
+        
+        # Document Q&A tools
         query_documents,
         list_available_documents,
         refresh_document_index
     ]
 
-    # RAG tools (optional)
+    # RAG tools (optional - for external RAG services)
     supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
     if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and supabase_token:
         for collection in cfg.rag.collections:

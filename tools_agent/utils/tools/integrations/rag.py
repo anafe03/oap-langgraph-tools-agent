@@ -2,9 +2,10 @@
 
 import json
 import re
+import aiohttp
 from pathlib import Path
 from typing import List, Dict, Optional, Annotated
-from langchain_core.tools import tool
+from langchain_core.tools import tool, StructuredTool, ToolException
 
 try:
     import PyPDF2
@@ -77,8 +78,10 @@ class FSBORAG:
         static_dir = Path(__file__).parent.parent.parent.parent.parent / "static"
         
         pdf_files = {
-            "Kentucky FSBO Guide": "Kentucky_FSBO_Guide.pdf",
-            "FSBO FAQ": "FSBO_Seller_FAQ.pdf"
+            "SelfNVest Google Guide": "SelfNVest Google Step by Step.pdf",
+            # Add more PDFs here as you get them
+            # "Kentucky FSBO Guide": "Kentucky_FSBO_Guide.pdf",
+            # "FSBO FAQ": "FSBO_Seller_FAQ.pdf"
         }
         
         for doc_name, filename in pdf_files.items():
@@ -100,6 +103,10 @@ class FSBORAG:
                     print(f"  Error loading {filename}: {text_content}")
             else:
                 print(f"  File not found: {pdf_path}")
+                # Try to list what files ARE in the static directory
+                if static_dir.exists():
+                    available_files = list(static_dir.glob("*.pdf"))
+                    print(f"  Available PDFs in static: {[f.name for f in available_files]}")
     
     def search(self, query: str, max_results: int = 2) -> List[Dict]:
         """Search through documents using keyword matching."""
@@ -190,3 +197,43 @@ async def list_fsbo_documents() -> str:
         
     except Exception as e:
         return f"Error listing documents: {str(e)}"
+
+# Add these functions that your existing agent expects to import
+async def create_rag_tool(rag_url: str, collection_id: str, access_token: str):
+    """Create a RAG tool for a specific collection - for compatibility with existing imports."""
+    # This is a placeholder for compatibility - your existing code imports this
+    # but for the FSBO use case, we're using the simpler PDF-based system above
+    pass
+
+def wrap_mcp_authenticate_tool(tool: StructuredTool) -> StructuredTool:
+    """Wrap tool to handle MCP authentication errors - for compatibility with existing imports."""
+    old_coroutine = tool.coroutine
+
+    async def wrapped_mcp_coroutine(**kwargs):
+        try:
+            response = await old_coroutine(**kwargs)
+            return response
+        except Exception as e:
+            if "TaskGroup" in str(e) and hasattr(e, "__context__"):
+                sub_exception = e.__context__
+                if hasattr(sub_exception, "error"):
+                    e = sub_exception
+
+            if (
+                hasattr(e, "error")
+                and hasattr(e.error, "code")
+                and e.error.code == -32003
+                and hasattr(e.error, "data")
+            ):
+                error_message = (
+                    ((e.error.data or {}).get("message") or {}).get("text")
+                ) or "Required interaction"
+
+                if url := (e.error.data or {}).get("url"):
+                    error_message += f": {url}"
+
+                raise ToolException(error_message)
+            raise e
+
+    tool.coroutine = wrapped_mcp_coroutine
+    return tool
