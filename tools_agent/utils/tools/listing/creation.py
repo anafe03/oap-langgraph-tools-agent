@@ -95,7 +95,7 @@ async def insert_listing(
         return f"❌ Error inserting listing: {str(e)}"
 
 
-@tool(name="make_listing", description="Create a formatted FSBO property listing preview from user inputs.")
+#@tool(name="make_listing", description="Create a formatted FSBO property listing preview from user inputs.")
 async def make_listing(
     title: Annotated[str, "A short, attention-grabbing title for the property"],
     address: Annotated[str, "The full address of the property"],
