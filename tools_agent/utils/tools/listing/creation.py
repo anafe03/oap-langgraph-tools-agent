@@ -12,9 +12,8 @@ import json
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://gdmdurzaeezcrgrmtabx.supabase.co")
 SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-#@tool(name="insert_listing", description="Insert a new FSBO listing into the Supabase 'listings' table with proper schema matching.")
+#@tool
 async def insert_listing(
-    user_id: Annotated[str, "The seller's user_id (UUID)"],
     title: Annotated[str, "Listing title"],
     address: Annotated[str, "Full street address"],
     city: Annotated[str, "City"],
@@ -32,9 +31,15 @@ async def insert_listing(
     images: Annotated[list, "Array of image URLs"] = None,
 ) -> str:
     """
-    Inserts a new FSBO listing into Supabase with the correct schema.
-    Matches the exact database schema: id, user_id, title, description, price, address, city, state, zip_code, bedrooms, bathrooms, sqft, lot_size, year_built, property_type, features, images, status, views, created_at, updated_at
+    Insert a new FSBO listing into the Supabase 'listings' table with proper schema matching.
+    Automatically gets the user_id from the current chat context.
     """
+    
+    # Get user ID from environment variable (set by chat context)
+    user_id = os.getenv("CURRENT_USER_ID")
+    if not user_id:
+        return "❌ User authentication required. Please make sure you're logged in and try again."
+    
     if not SERVICE_ROLE_KEY:
         return "❌ SUPABASE_SERVICE_ROLE_KEY is not set."
 
@@ -89,13 +94,13 @@ async def insert_listing(
                 inserted = json.loads(text)
                 listing_id = inserted.get("id", "unknown")
                 listing_title = inserted.get("title", "unknown")
-                return f"✅ Successfully created listing '{listing_title}' with ID: {listing_id}"
+                return f"✅ Successfully created listing '{listing_title}' with ID: {listing_id}. Your listing is now live and can be viewed by potential buyers!"
                 
     except Exception as e:
         return f"❌ Error inserting listing: {str(e)}"
 
 
-#@tool(name="make_listing", description="Create a formatted FSBO property listing preview from user inputs.")
+#@tool
 async def make_listing(
     title: Annotated[str, "A short, attention-grabbing title for the property"],
     address: Annotated[str, "The full address of the property"],
@@ -107,7 +112,7 @@ async def make_listing(
     sqft: Annotated[int, "Square footage of the home"] = None,
     description: Annotated[str, "Detailed description of the property"] = None,
 ) -> str:
-    """Generate a formatted FSBO property listing preview based on user inputs."""
+    """Create a formatted FSBO property listing preview from user inputs."""
     
     listing = f"""
 🏡 **{title}**
@@ -129,3 +134,40 @@ async def make_listing(
     listing += "\n_This is a preview. Use insert_listing to save it to the database._"
     
     return listing.strip()
+
+
+# Legacy function for backward compatibility
+async def syndicate_listing(
+    title: Annotated[str, "The listing title"],
+    address: Annotated[str, "The property address"],
+    price: Annotated[str, "The listing price"],
+    bedrooms: Annotated[int, "Number of bedrooms"],
+    bathrooms: Annotated[float, "Number of bathrooms"],
+    square_feet: Annotated[int, "Total square footage"],
+    description: Annotated[str, "The detailed listing description"],
+    access_token: Annotated[str, "Your API token to authenticate with the MLS service"],
+    mls_api_url: Annotated[str, "The URL of the MLS listing API endpoint"]
+) -> str:
+    """Submits the listing data to the MLS system."""
+    payload = {
+        "title": title,
+        "address": address,
+        "price": price,
+        "bedrooms": bedrooms,
+        "bathrooms": bathrooms,
+        "square_feet": square_feet,
+        "description": description
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                mls_api_url,
+                json=payload,
+                headers={"Authorization": f"Bearer {access_token}"}
+            ) as response:
+                response.raise_for_status()
+                response_data = await response.json()
+        return f"✅ Listing successfully syndicated to MLS. MLS ID: {response_data.get('listing_id', 'unknown')}"
+    except Exception as e:
+        return f"❌ Failed to syndicate listing: {str(e)}"
