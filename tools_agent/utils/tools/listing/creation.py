@@ -12,7 +12,7 @@ import json
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://gdmdurzaeezcrgrmtabx.supabase.co")
 SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-#@tool
+#@tool@tool
 async def insert_listing(
     title: Annotated[str, "Listing title"],
     address: Annotated[str, "Full street address"],
@@ -31,7 +31,7 @@ async def insert_listing(
     images: Annotated[list, "Array of image URLs"] = None,
 ) -> str:
     """
-    Insert a new FSBO listing into the Supabase 'listings' table with proper schema matching.
+    Insert a new FSBO listing into the Supabase 'listings' table.
     Automatically gets the user_id from the current chat context.
     """
     
@@ -91,14 +91,31 @@ async def insert_listing(
                 if resp.status >= 300:
                     return f"❌ Supabase error {resp.status}: {text}"
                 
-                inserted = json.loads(text)
-                listing_id = inserted.get("id", "unknown")
-                listing_title = inserted.get("title", "unknown")
-                return f"✅ Successfully created listing '{listing_title}' with ID: {listing_id}. Your listing is now live and can be viewed by potential buyers!"
+                # FIX: Handle both list and dict responses from Supabase
+                try:
+                    inserted = json.loads(text)
+                    
+                    # If Supabase returns a list, get the first item
+                    if isinstance(inserted, list):
+                        if len(inserted) > 0:
+                            listing_data = inserted[0]
+                        else:
+                            return "❌ No data returned from database"
+                    else:
+                        # If it's already a dict, use it directly
+                        listing_data = inserted
+                    
+                    # Now safely get the values
+                    listing_id = listing_data.get("id", "unknown")
+                    listing_title = listing_data.get("title", "unknown")
+                    
+                    return f"✅ Successfully created listing '{listing_title}' with ID: {listing_id}. Your listing is now live and can be viewed by potential buyers!"
+                    
+                except json.JSONDecodeError:
+                    return f"❌ Invalid JSON response from database: {text}"
                 
     except Exception as e:
         return f"❌ Error inserting listing: {str(e)}"
-
 
 #@tool
 async def make_listing(
