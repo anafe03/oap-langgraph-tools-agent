@@ -6,9 +6,9 @@ from .finance_legal import *
 from .integrations import *
 
 # Import the new listing tools with correct names
-from .market import market_trends  # or wherever market_trends is defined
+
 from .listing.creation import create_property_listing, update_property_listing, get_my_listings
-# ... other imports
+
 from .market import (neighborhood_activity_tracker)
 from .marketing import *
 from .media import *
