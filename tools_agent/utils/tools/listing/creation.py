@@ -5,16 +5,31 @@ import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
 
 logger = logging.getLogger(__name__)
 
 # Configuration - Use your FastAPI backend, not Supabase directly
 API_BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
+def _get_user_id_from_config(config: Optional[RunnableConfig] = None) -> str:
+    """Extract user ID from the RunnableConfig passed by LangGraph."""
+    if not config:
+        raise ValueError("No configuration provided - user authentication required")
+    
+    configurable = config.get("configurable", {})
+    user_id = configurable.get("current_user_id")
+    
+    if not user_id:
+        raise ValueError("User authentication required - please log in")
+    
+    return str(user_id)
+
 async def _create_listing_async(
     title: str,
     address: str,
     price: float,  # Changed to float to match your models
+    user_id: str,  # Now passed as parameter instead of env var
     bedrooms: Optional[int] = None,
     bathrooms: Optional[float] = None,
     sqft: Optional[int] = None,  # Match your field name
@@ -28,22 +43,15 @@ async def _create_listing_async(
 ) -> Dict[str, Any]:
     """Internal async function to create a listing via your FastAPI backend."""
     try:
-        user_id = os.environ.get("CURRENT_USER_ID")
         if not user_id:
-            return {"success": False, "error": "User authentication required"}
-
-        # Get auth token (set by your FastAPI system message injection)
-        auth_header = {}
-        if user_id:
-            # Your FastAPI backend handles auth via CURRENT_USER_ID env var
-            # No need for explicit token here since it's handled by the system
-            pass
+            return {"success": False, "error": "User authentication required - no user ID provided"}
 
         # Prepare listing data matching your ListingCreate model
         listing_data = {
             "title": title,
             "address": address,
             "price": price,  # Float, not cents
+            "user_id": user_id  # Include user_id in the payload
         }
         
         # Add optional fields only if provided
@@ -73,8 +81,8 @@ async def _create_listing_async(
             response = await client.post(
                 f"{API_BASE_URL}/api/listings/",
                 headers={
-                    'Content-Type': 'application/json',
-                    'Authorization': f'Bearer fake_token_handled_by_system'  # Your system handles this
+                    'Content-Type': 'application/json'
+                    # Removed fake token since user_id is now in payload
                 },
                 json=listing_data
             )
@@ -110,28 +118,26 @@ async def _create_listing_async(
         logger.error(f"Error creating listing: {str(e)}")
         return {"success": False, "error": f"Failed to create listing: {str(e)}"}
 
-async def _update_listing_async(listing_id: str, **kwargs) -> Dict[str, Any]:
+async def _update_listing_async(listing_id: str, user_id: str, **kwargs) -> Dict[str, Any]:
     """Internal async function to update a listing via your FastAPI backend."""
     try:
-        user_id = os.environ.get("CURRENT_USER_ID")
         if not user_id:
-            return {"success": False, "error": "User authentication required"}
+            return {"success": False, "error": "User authentication required - no user ID provided"}
 
         # Prepare update data (only non-None values)
-        update_data = {}
+        update_data = {"user_id": user_id}  # Include user_id
         for key, value in kwargs.items():
             if value is not None:
                 update_data[key] = value
 
-        if not update_data:
+        if len(update_data) <= 1:  # Only user_id
             return {"success": False, "error": "No update data provided"}
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.put(
                 f"{API_BASE_URL}/api/listings/{listing_id}",
                 headers={
-                    'Content-Type': 'application/json',
-                    'Authorization': f'Bearer fake_token_handled_by_system'
+                    'Content-Type': 'application/json'
                 },
                 json=update_data
             )
@@ -162,18 +168,17 @@ async def _update_listing_async(listing_id: str, **kwargs) -> Dict[str, Any]:
     except Exception as e:
         return {"success": False, "error": f"Failed to update: {str(e)}"}
 
-async def _get_listings_async() -> Dict[str, Any]:
+async def _get_listings_async(user_id: str) -> Dict[str, Any]:
     """Internal async function to get user listings via your FastAPI backend."""
     try:
-        user_id = os.environ.get("CURRENT_USER_ID")
         if not user_id:
-            return {"success": False, "error": "User authentication required"}
+            return {"success": False, "error": "User authentication required - no user ID provided"}
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 f"{API_BASE_URL}/api/listings/user/{user_id}",
                 headers={
-                    'Authorization': f'Bearer fake_token_handled_by_system'
+                    'Content-Type': 'application/json'
                 }
             )
             
@@ -230,7 +235,8 @@ def create_property_listing(
     images: Optional[List[str]] = None,
     city: Optional[str] = None,
     state: Optional[str] = None,
-    zip_code: Optional[str] = None
+    zip_code: Optional[str] = None,
+    config: Optional[RunnableConfig] = None
 ) -> str:
     """Create a new property listing using the FastAPI backend.
     
@@ -249,33 +255,44 @@ def create_property_listing(
         state: State abbreviation (optional)  
         zip_code: ZIP code (optional)
     """
-    result = _run_async(_create_listing_async(
-        title=title, 
-        address=address, 
-        price=price,
-        bedrooms=bedrooms,
-        bathrooms=bathrooms, 
-        sqft=sqft,
-        property_type=property_type, 
-        description=description, 
-        features=features, 
-        images=images,
-        city=city,
-        state=state,
-        zip_code=zip_code
-    ))
+    try:
+        # Get user ID from the configuration
+        user_id = _get_user_id_from_config(config)
+        
+        result = _run_async(_create_listing_async(
+            title=title, 
+            address=address, 
+            price=price,
+            user_id=user_id,
+            bedrooms=bedrooms,
+            bathrooms=bathrooms, 
+            sqft=sqft,
+            property_type=property_type, 
+            description=description, 
+            features=features, 
+            images=images,
+            city=city,
+            state=state,
+            zip_code=zip_code
+        ))
+        
+        if result["success"]:
+            info = result["listing"]
+            return (f"✅ Successfully created '{info['title']}'!\n"
+                    f"📍 {info['address']}\n"
+                    f"💰 {info['price']}\n"
+                    f"🛏️ {info.get('bedrooms', 'N/A')}BR / 🚿 {info.get('bathrooms', 'N/A')}BA\n"
+                    f"📐 {info.get('sqft', 'N/A')} sq ft\n"
+                    f"📸 {info['image_count']} photo(s)\n"
+                    f"Your listing is now live!")
+        else:
+            return f"❌ Failed to create listing: {result['error']}"
     
-    if result["success"]:
-        info = result["listing"]
-        return (f"✅ Successfully created '{info['title']}'!\n"
-                f"📍 {info['address']}\n"
-                f"💰 {info['price']}\n"
-                f"🛏️ {info.get('bedrooms', 'N/A')}BR / 🚿 {info.get('bathrooms', 'N/A')}BA\n"
-                f"📐 {info.get('sqft', 'N/A')} sq ft\n"
-                f"📸 {info['image_count']} photo(s)\n"
-                f"Your listing is now live!")
-    else:
-        return f"❌ Failed to create listing: {result['error']}"
+    except ValueError as e:
+        return f"❌ {str(e)}"
+    except Exception as e:
+        logger.error(f"Unexpected error in create_property_listing: {e}")
+        return f"❌ Unexpected error: {str(e)}"
 
 #@tool 
 def update_property_listing(
@@ -292,57 +309,78 @@ def update_property_listing(
     images: Optional[List[str]] = None,
     city: Optional[str] = None,
     state: Optional[str] = None,
-    zip_code: Optional[str] = None
+    zip_code: Optional[str] = None,
+    config: Optional[RunnableConfig] = None
 ) -> str:
     """Update an existing property listing via FastAPI backend."""
-    result = _run_async(_update_listing_async(
-        listing_id=listing_id,
-        title=title,
-        address=address,
-        price=price,
-        bedrooms=bedrooms,
-        bathrooms=bathrooms,
-        sqft=sqft,
-        property_type=property_type,
-        description=description,
-        features=features,
-        images=images,
-        city=city,
-        state=state,
-        zip_code=zip_code
-    ))
+    try:
+        # Get user ID from configuration
+        user_id = _get_user_id_from_config(config)
+        
+        result = _run_async(_update_listing_async(
+            listing_id=listing_id,
+            user_id=user_id,
+            title=title,
+            address=address,
+            price=price,
+            bedrooms=bedrooms,
+            bathrooms=bathrooms,
+            sqft=sqft,
+            property_type=property_type,
+            description=description,
+            features=features,
+            images=images,
+            city=city,
+            state=state,
+            zip_code=zip_code
+        ))
+        
+        if result["success"]:
+            info = result["listing"]
+            return (f"✅ Updated '{info['title']}'!\n"
+                    f"📍 {info['address']}\n"
+                    f"💰 {info['price']}\n"
+                    f"📸 {info['image_count']} photo(s)")
+        else:
+            return f"❌ Failed to update: {result['error']}"
     
-    if result["success"]:
-        info = result["listing"]
-        return (f"✅ Updated '{info['title']}'!\n"
-                f"📍 {info['address']}\n"
-                f"💰 {info['price']}\n"
-                f"📸 {info['image_count']} photo(s)")
-    else:
-        return f"❌ Failed to update: {result['error']}"
+    except ValueError as e:
+        return f"❌ {str(e)}"
+    except Exception as e:
+        return f"❌ Unexpected error: {str(e)}"
 
 #@tool
-def get_my_listings() -> str:
+def get_my_listings(config: Optional[RunnableConfig] = None) -> str:
     """Get all property listings for the current user via FastAPI backend."""
-    result = _run_async(_get_listings_async())
+    try:
+        # Get user ID from configuration
+        user_id = _get_user_id_from_config(config)
+        
+        result = _run_async(_get_listings_async(user_id))
+        
+        if result["success"]:
+            listings = result["listings"]
+            if not listings:
+                return "📋 No active listings. Want to create one?"
+            
+            response = f"📋 Your Listings ({result['total_count']}):\n\n"
+            for i, listing in enumerate(listings, 1):
+                response += (f"{i}. {listing['title']}\n"
+                            f"   📍 {listing['address']}\n"
+                            f"   💰 {listing['price']}\n"
+                            f"   🛏️ {listing.get('bedrooms', 'N/A')}BR / 🚿 {listing.get('bathrooms', 'N/A')}BA\n"
+                            f"   📊 {listing['views']} views\n"
+                            f"   📸 {listing['image_count']} photo(s)\n\n")
+            
+            return response
+        else:
+            return f"❌ Failed to get listings: {result['error']}"
     
-    if result["success"]:
-        listings = result["listings"]
-        if not listings:
-            return "📋 No active listings. Want to create one?"
-        
-        response = f"📋 Your Listings ({result['total_count']}):\n\n"
-        for i, listing in enumerate(listings, 1):
-            response += (f"{i}. {listing['title']}\n"
-                        f"   📍 {listing['address']}\n"
-                        f"   💰 {listing['price']}\n"
-                        f"   🛏️ {listing.get('bedrooms', 'N/A')}BR / 🚿 {listing.get('bathrooms', 'N/A')}BA\n"
-                        f"   📊 {listing['views']} views\n"
-                        f"   📸 {listing['image_count']} photo(s)\n\n")
-        
-        return response
-    else:
-        return f"❌ Failed to get listings: {result['error']}"
+    except ValueError as e:
+        return f"❌ {str(e)}"
+    except Exception as e:
+        logger.error(f"Unexpected error in get_my_listings: {e}")
+        return f"❌ Unexpected error: {str(e)}"
 
 # Export tools for easy importing
 LISTING_TOOLS = [
