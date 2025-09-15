@@ -13,9 +13,10 @@ from tools_agent.utils.tools.market import (neighborhood_activity_tracker)
 
 # Import all existing tools
 from tools_agent.utils.tools import (
-    # Listing tools
-    make_listing,
-    insert_listing,
+    # Listing tools - UPDATED TO USE NEW FUNCTION NAMES
+    create_property_listing,
+    update_property_listing,
+    get_my_listings,
     
     # Market research and valuation tools
     market_trends,
@@ -129,9 +130,10 @@ async def graph(config: RunnableConfig):
     
     # Complete list of tools including RAG tools
     tools = [
-        # Core listing and market tools
-        make_listing,
-        insert_listing,
+        # Core listing and market tools - UPDATED TO USE NEW FUNCTION NAMES
+        create_property_listing,
+        update_property_listing,
+        get_my_listings,
         market_trends,
         
         # Valuation and analysis tools
