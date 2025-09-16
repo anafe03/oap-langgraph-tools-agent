@@ -6,7 +6,6 @@ Summarizes recent sales, new listings, and market velocity to help FSBO sellers 
 
 from typing import Annotated, List, Optional
 
-
 # @tool(name="neighborhood_activity_tracker", description="Analyze recent market activity like sales, listings, and market speed in a ZIP code")
 async def neighborhood_activity_tracker(
     zip_code: Annotated[str, "ZIP code of the neighborhood to analyze"],

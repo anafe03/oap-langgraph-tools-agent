@@ -8,7 +8,6 @@ from langchain_core.tools import tool
 from ..common.utils import extract_price_from_text, calculate_price_per_sqft
 from .research import _search_property_data
 
-
 #@tool(name="generate_cma", description="Generate a comprehensive Comparative Market Analysis (CMA) report for a property")
 async def generate_cma(
     address: Annotated[str, "The subject property address"],
@@ -183,7 +182,6 @@ Based on the comparative analysis above, consider the following pricing strategi
         
     except Exception as e:
         return f"❌ Error generating CMA report: {str(e)}"
-
 
 #@tool(name="quick_property_valuation", description="Get a quick property value estimate based on comparable sales")
 async def quick_property_valuation(

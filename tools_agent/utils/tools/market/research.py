@@ -6,11 +6,8 @@ from typing import Annotated
 from langchain_core.tools import tool, ToolException
 from ..common.config import TAVILY_API_KEY, validate_tavily_api
 
-
 #@tool(name="market_trends", description="Fetch local market research data for a specific location")
-async def market_trends(
-    location: Annotated[str, "The location (city, state, or zip code) to fetch market trends for"]
-) -> dict:
+async def market_trends(location: Annotated[str, "The location (city, state, or zip code) to fetch market trends for"]) -> dict:
     """
     Fetch local market research data using the Tavily search API.
     """
@@ -54,7 +51,6 @@ async def market_trends(
     except Exception as e:
         raise ToolException(f"An error occurred fetching market trends: {str(e)}")
 
-
 async def _search_property_data(query: str, max_results: int = 10) -> dict:
     """Search for property data using Tavily API with real estate focus."""
     validate_tavily_api()
@@ -78,7 +74,7 @@ async def _search_property_data(query: str, max_results: int = 10) -> dict:
                 if response.status != 200:
                     error_message = await response.text()
                     raise ToolException(f"Search failed with status {response.status}: {error_message}")
-                
+                                
                 return await response.json()
     except Exception as e:
         raise ToolException(f"Error searching property data: {str(e)}")
