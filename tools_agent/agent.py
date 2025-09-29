@@ -1,188 +1,229 @@
-# tools_agent/agent.py - Fixed version with RAG tools
+# # tools_agent/agent.py - Fixed version with RAG tools
+
+# from langchain_core.runnables import RunnableConfig
+# from typing import Optional, List
+# from pydantic import BaseModel, Field
+# from langgraph.prebuilt import create_react_agent
+# from langchain.chat_models import init_chat_model
+# from langchain_mcp_adapters.client import MultiServerMCPClient
+# from tools_agent.utils.token import fetch_tokens
+
+# # Import market tools
+# from tools_agent.utils.tools.market import (neighborhood_activity_tracker)
+
+# # Import all existing tools
+# from tools_agent.utils.tools import (
+#     # Listing tools - UPDATED TO USE NEW FUNCTION NAMES
+#     create_property_listing,
+#     update_property_listing,
+#     get_my_listings,
+    
+#     # Market research and valuation tools
+#     market_trends,
+#     generate_cma,
+#     quick_property_valuation,
+    
+#     # Professional finder tools
+#     find_mortgage_lender,
+#     find_real_estate_attorney,
+#     find_title_company,
+#     find_appraiser,
+#     find_real_estate_photographer,
+#     find_home_inspector,
+    
+#     # Marketing and scheduling tools
+#     schedule_open_house,
+#     post_to_facebook,
+#     send_open_house_emails,
+#     generate_property_listing_tweet,
+#     post_to_twitter,
+# )
+
+# # Import RAG tools from integrations
+# from tools_agent.utils.tools.integrations.rag import (
+#     create_rag_tool,
+#     wrap_mcp_authenticate_tool,
+#     search_fsbo_knowledge,
+#     list_fsbo_documents
+# )
+
+# # Removed old Q&A tools to avoid confusion with RAG tools
+
+# UNEDITABLE_SYSTEM_PROMPT = "\nIf the tool throws an error requiring authentication, provide the user with a Markdown link to the authentication page and prompt them to authenticate."
+
+# DEFAULT_SYSTEM_PROMPT = (
+#     "You are a knowledgeable and supportive AI real estate agent named Vesty that helps homeowners navigate the For Sale By Owner (FSBO) process. Greet the user and introduce yourself. "
+#     "You have access to comprehensive tools that let you create property listings, find professional services, generate market analysis, schedule showings, provide pricing guidance, "
+#     "analyze documents, and answer questions about uploaded files. "
+#     "You also have access to a FSBO knowledge base with detailed guides about selling homes without an agent, legal requirements, pricing strategies, and closing processes. "
+#     "When users ask for help, use the appropriate tools and always make sure to inform them of the next steps in their FSBO journey. "
+#     "Use search_fsbo_knowledge when users ask about FSBO processes, legal requirements, pricing, marketing, or any selling-related questions. "
+#     "Your goal is to assist sellers in effectively marketing and managing their property sale without needing a traditional agent, while connecting them with the right professionals when needed."
+# )
+
+# class RagConfig(BaseModel):
+#     rag_url: Optional[str] = None
+#     collections: Optional[List[str]] = None
+
+# class MCPConfig(BaseModel):
+#     url: Optional[str] = Field(default=None, optional=True)
+#     tools: Optional[List[str]] = Field(default=None, optional=True)
+
+# class GraphConfigPydantic(BaseModel):
+#     model_name: Optional[str] = Field(
+#         default="openai:gpt-4o",
+#         metadata={
+#             "x_oap_ui_config": {
+#                 "type": "select",
+#                 "default": "openai:gpt-4o",
+#                 "description": "The model to use in all generations",
+#                 "options": [
+#                     {"label": "Claude 3.7 Sonnet", "value": "anthropic:claude-3-7-sonnet-latest"},
+#                     {"label": "Claude 3.5 Sonnet", "value": "anthropic:claude-3-5-sonnet-latest"},
+#                     {"label": "GPT 4o", "value": "openai:gpt-4o"},
+#                     {"label": "GPT 4o mini", "value": "openai:gpt-4o-mini"},
+#                     {"label": "GPT 4.1", "value": "openai:gpt-4.1"},
+#                 ],
+#             }
+#         },
+#     )
+#     temperature: Optional[float] = Field(
+#         default=0.7,
+#         metadata={
+#             "x_oap_ui_config": {
+#                 "type": "slider",
+#                 "default": 0.7,
+#                 "min": 0,
+#                 "max": 2,
+#                 "step": 0.1,
+#                 "description": "Controls randomness (0 = deterministic, 2 = creative)",
+#             }
+#         },
+#     )
+#     max_tokens: Optional[int] = Field(
+#         default=4000,
+#         metadata={
+#             "x_oap_ui_config": {
+#                 "type": "number",
+#                 "default": 4000,
+#                 "min": 1,
+#                 "description": "The maximum number of tokens to generate",
+#             }
+#         },
+#     )
+#     system_prompt: Optional[str] = Field(
+#         default=DEFAULT_SYSTEM_PROMPT,
+#         metadata={
+#             "x_oap_ui_config": {
+#                 "type": "textarea",
+#                 "placeholder": "Enter a system prompt...",
+#                 "description": f"The system prompt to use in all generations. The following prompt will always be included at the end of the system prompt:\n---{UNEDITABLE_SYSTEM_PROMPT}\n---",
+#                 "default": DEFAULT_SYSTEM_PROMPT,
+#             }
+#         },
+#     )
+#     mcp_config: Optional[MCPConfig] = Field(default=None, optional=True)
+#     rag: Optional[RagConfig] = Field(default=None, optional=True)
+
+# async def graph(config: RunnableConfig):
+#     cfg = GraphConfigPydantic(**config.get("configurable", {}))
+    
+#     # Complete list of tools including RAG tools
+#     tools = [
+#         # Core listing and market tools - UPDATED TO USE NEW FUNCTION NAMES
+#         create_property_listing,
+#         update_property_listing,
+#         get_my_listings,
+#         market_trends,
+        
+#         # Valuation and analysis tools
+#         generate_cma,
+#         quick_property_valuation,
+        
+#         # Professional finder tools
+#         find_mortgage_lender,
+#         find_real_estate_attorney,
+#         find_title_company,
+#         find_appraiser,
+#         find_real_estate_photographer,
+#         find_home_inspector,
+        
+#         # Marketing and scheduling tools
+#         schedule_open_house,
+#         post_to_facebook,
+#         send_open_house_emails,
+#         generate_property_listing_tweet,
+#         post_to_twitter,
+        
+#         # FSBO RAG tools (only these for document handling)
+#         search_fsbo_knowledge,
+#         list_fsbo_documents,
+#     ]
+
+#     # RAG tools (optional - for external RAG services)
+#     supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
+#     if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and supabase_token:
+#         for collection in cfg.rag.collections:
+#             rag_tool = await create_rag_tool(cfg.rag.rag_url, collection, supabase_token)
+#             tools.append(rag_tool)
+
+#     # MCP tools (optional)
+#     if cfg.mcp_config and cfg.mcp_config.url and cfg.mcp_config.tools and (mcp_tokens := await fetch_tokens(config)):
+#         mcp_client = MultiServerMCPClient(
+#             connections={
+#                 "mcp_server": {
+#                     "transport": "streamable_http",
+#                     "url": cfg.mcp_config.url.rstrip("/") + "/mcp",
+#                     "headers": {"Authorization": f"Bearer {mcp_tokens['access_token']}"},
+#                 }
+#             }
+#         )
+#         tools.extend([
+#             wrap_mcp_authenticate_tool(tool)
+#             for tool in await mcp_client.get_tools()
+#             if tool.name in cfg.mcp_config.tools
+#         ])
+
+#     model = init_chat_model(
+#         cfg.model_name,
+#         temperature=cfg.temperature,
+#         max_tokens=cfg.max_tokens,
+#     )
+
+#     return create_react_agent(
+#         prompt=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT,
+#         model=model,
+#         tools=tools,
+#         config_schema=GraphConfigPydantic,
+#     )
+
+
+# tools_agent/agent.py - MINIMAL VERSION FOR TESTING
 
 from langchain_core.runnables import RunnableConfig
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel, Field
 from langgraph.prebuilt import create_react_agent
 from langchain.chat_models import init_chat_model
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from tools_agent.utils.token import fetch_tokens
-
-# Import market tools
-from tools_agent.utils.tools.market import (neighborhood_activity_tracker)
-
-# Import all existing tools
-from tools_agent.utils.tools import (
-    # Listing tools - UPDATED TO USE NEW FUNCTION NAMES
-    create_property_listing,
-    update_property_listing,
-    get_my_listings,
-    
-    # Market research and valuation tools
-    market_trends,
-    generate_cma,
-    quick_property_valuation,
-    
-    # Professional finder tools
-    find_mortgage_lender,
-    find_real_estate_attorney,
-    find_title_company,
-    find_appraiser,
-    find_real_estate_photographer,
-    find_home_inspector,
-    
-    # Marketing and scheduling tools
-    schedule_open_house,
-    post_to_facebook,
-    send_open_house_emails,
-    generate_property_listing_tweet,
-    post_to_twitter,
-)
-
-# Import RAG tools from integrations
-from tools_agent.utils.tools.integrations.rag import (
-    create_rag_tool,
-    wrap_mcp_authenticate_tool,
-    search_fsbo_knowledge,
-    list_fsbo_documents
-)
-
-# Removed old Q&A tools to avoid confusion with RAG tools
 
 UNEDITABLE_SYSTEM_PROMPT = "\nIf the tool throws an error requiring authentication, provide the user with a Markdown link to the authentication page and prompt them to authenticate."
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are a knowledgeable and supportive AI real estate agent named Vesty that helps homeowners navigate the For Sale By Owner (FSBO) process. Greet the user and introduce yourself. "
-    "You have access to comprehensive tools that let you create property listings, find professional services, generate market analysis, schedule showings, provide pricing guidance, "
-    "analyze documents, and answer questions about uploaded files. "
-    "You also have access to a FSBO knowledge base with detailed guides about selling homes without an agent, legal requirements, pricing strategies, and closing processes. "
-    "When users ask for help, use the appropriate tools and always make sure to inform them of the next steps in their FSBO journey. "
-    "Use search_fsbo_knowledge when users ask about FSBO processes, legal requirements, pricing, marketing, or any selling-related questions. "
-    "Your goal is to assist sellers in effectively marketing and managing their property sale without needing a traditional agent, while connecting them with the right professionals when needed."
+    "You are a knowledgeable and supportive AI real estate agent named Vesty. "
+    "Greet the user and introduce yourself. Help them with real estate questions."
 )
 
-class RagConfig(BaseModel):
-    rag_url: Optional[str] = None
-    collections: Optional[List[str]] = None
-
-class MCPConfig(BaseModel):
-    url: Optional[str] = Field(default=None, optional=True)
-    tools: Optional[List[str]] = Field(default=None, optional=True)
-
 class GraphConfigPydantic(BaseModel):
-    model_name: Optional[str] = Field(
-        default="openai:gpt-4o",
-        metadata={
-            "x_oap_ui_config": {
-                "type": "select",
-                "default": "openai:gpt-4o",
-                "description": "The model to use in all generations",
-                "options": [
-                    {"label": "Claude 3.7 Sonnet", "value": "anthropic:claude-3-7-sonnet-latest"},
-                    {"label": "Claude 3.5 Sonnet", "value": "anthropic:claude-3-5-sonnet-latest"},
-                    {"label": "GPT 4o", "value": "openai:gpt-4o"},
-                    {"label": "GPT 4o mini", "value": "openai:gpt-4o-mini"},
-                    {"label": "GPT 4.1", "value": "openai:gpt-4.1"},
-                ],
-            }
-        },
-    )
-    temperature: Optional[float] = Field(
-        default=0.7,
-        metadata={
-            "x_oap_ui_config": {
-                "type": "slider",
-                "default": 0.7,
-                "min": 0,
-                "max": 2,
-                "step": 0.1,
-                "description": "Controls randomness (0 = deterministic, 2 = creative)",
-            }
-        },
-    )
-    max_tokens: Optional[int] = Field(
-        default=4000,
-        metadata={
-            "x_oap_ui_config": {
-                "type": "number",
-                "default": 4000,
-                "min": 1,
-                "description": "The maximum number of tokens to generate",
-            }
-        },
-    )
-    system_prompt: Optional[str] = Field(
-        default=DEFAULT_SYSTEM_PROMPT,
-        metadata={
-            "x_oap_ui_config": {
-                "type": "textarea",
-                "placeholder": "Enter a system prompt...",
-                "description": f"The system prompt to use in all generations. The following prompt will always be included at the end of the system prompt:\n---{UNEDITABLE_SYSTEM_PROMPT}\n---",
-                "default": DEFAULT_SYSTEM_PROMPT,
-            }
-        },
-    )
-    mcp_config: Optional[MCPConfig] = Field(default=None, optional=True)
-    rag: Optional[RagConfig] = Field(default=None, optional=True)
+    model_name: Optional[str] = Field(default="openai:gpt-4o")
+    temperature: Optional[float] = Field(default=0.7)
+    max_tokens: Optional[int] = Field(default=4000)
+    system_prompt: Optional[str] = Field(default=DEFAULT_SYSTEM_PROMPT)
 
 async def graph(config: RunnableConfig):
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
     
-    # Complete list of tools including RAG tools
-    tools = [
-        # Core listing and market tools - UPDATED TO USE NEW FUNCTION NAMES
-        create_property_listing,
-        update_property_listing,
-        get_my_listings,
-        market_trends,
-        
-        # Valuation and analysis tools
-        generate_cma,
-        quick_property_valuation,
-        
-        # Professional finder tools
-        find_mortgage_lender,
-        find_real_estate_attorney,
-        find_title_company,
-        find_appraiser,
-        find_real_estate_photographer,
-        find_home_inspector,
-        
-        # Marketing and scheduling tools
-        schedule_open_house,
-        post_to_facebook,
-        send_open_house_emails,
-        generate_property_listing_tweet,
-        post_to_twitter,
-        
-        # FSBO RAG tools (only these for document handling)
-        search_fsbo_knowledge,
-        list_fsbo_documents,
-    ]
-
-    # RAG tools (optional - for external RAG services)
-    supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
-    if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and supabase_token:
-        for collection in cfg.rag.collections:
-            rag_tool = await create_rag_tool(cfg.rag.rag_url, collection, supabase_token)
-            tools.append(rag_tool)
-
-    # MCP tools (optional)
-    if cfg.mcp_config and cfg.mcp_config.url and cfg.mcp_config.tools and (mcp_tokens := await fetch_tokens(config)):
-        mcp_client = MultiServerMCPClient(
-            connections={
-                "mcp_server": {
-                    "transport": "streamable_http",
-                    "url": cfg.mcp_config.url.rstrip("/") + "/mcp",
-                    "headers": {"Authorization": f"Bearer {mcp_tokens['access_token']}"},
-                }
-            }
-        )
-        tools.extend([
-            wrap_mcp_authenticate_tool(tool)
-            for tool in await mcp_client.get_tools()
-            if tool.name in cfg.mcp_config.tools
-        ])
+    # NO TOOLS - just the model
+    tools = []
 
     model = init_chat_model(
         cfg.model_name,
@@ -193,6 +234,6 @@ async def graph(config: RunnableConfig):
     return create_react_agent(
         prompt=cfg.system_prompt + UNEDITABLE_SYSTEM_PROMPT,
         model=model,
-        tools=tools,
+        tools=tools,  # Empty list
         config_schema=GraphConfigPydantic,
     )
