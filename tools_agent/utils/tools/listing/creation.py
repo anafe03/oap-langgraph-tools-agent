@@ -11,7 +11,7 @@ from typing_extensions import Annotated
 logger = logging.getLogger(__name__)
 
 # Configuration - Use your FastAPI backend
-API_BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+API_BASE_URL = os.getenv("BASE_URL", "https://vesty-app-fastapi.onrender.com")
 
 #@tool
 def _get_user_context_from_config(config: Optional[RunnableConfig] = None) -> Dict[str, str]:
