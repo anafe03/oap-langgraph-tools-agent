@@ -4,8 +4,9 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from langchain_core.tools import tool
+from langchain_core.tools import tool, InjectedToolArg
 from langchain_core.runnables import RunnableConfig
+from typing_extensions import Annotated
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +169,7 @@ def create_property_listing(
     city: Optional[str] = None,
     state: Optional[str] = None,
     zip_code: Optional[str] = None,
-    config: Optional[RunnableConfig] = None
+    config: Annotated[RunnableConfig, InjectedToolArg] = None
 ) -> str:
     """Create a new property listing using the FastAPI backend with proper authentication."""
     try:
@@ -228,13 +229,13 @@ def update_property_listing(
     city: Optional[str] = None,
     state: Optional[str] = None,
     zip_code: Optional[str] = None,
-    config: Optional[RunnableConfig] = None
+    config: Annotated[RunnableConfig, InjectedToolArg] = None
 ) -> str:
     """Update an existing property listing via FastAPI backend."""
     return "Update listing functionality - placeholder implementation"
 
 #@tool
-def get_my_listings(config: Optional[RunnableConfig] = None) -> str:
+def get_my_listings(config: Annotated[RunnableConfig, InjectedToolArg] = None) -> str:
     """Get all property listings for the current user via FastAPI backend."""
     return "Get listings functionality - placeholder implementation"
 
