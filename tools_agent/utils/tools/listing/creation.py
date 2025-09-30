@@ -53,6 +53,7 @@ async def _create_listing_with_auth(
     address: str,
     price: float,
     user_context: Dict[str, str],
+    supabase_token: str,
     bedrooms: Optional[int] = None,
     bathrooms: Optional[float] = None,
     sqft: Optional[int] = None,
@@ -71,7 +72,7 @@ async def _create_listing_with_auth(
             "title": title,
             "address": address,
             "price": price,
-            "user_id": user_context["user_id"]  # Include user_id
+            "user_id": user_context["user_id"]
         }
         
         # Add optional fields only if provided
@@ -96,12 +97,10 @@ async def _create_listing_with_auth(
         if zip_code:
             listing_data["zip_code"] = zip_code
 
-        # Use internal service headers
+        # Use Supabase token for authentication
         headers = {
             'Content-Type': 'application/json',
-            'X-Internal-Service': 'langgraph-tools',
-            'X-User-ID': user_context["user_id"],
-            'X-User-Email': user_context["user_email"]
+            'Authorization': f'Bearer {supabase_token}',
         }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -114,7 +113,7 @@ async def _create_listing_with_auth(
             logger.info(f"FastAPI response status: {response.status_code}")
             logger.info(f"FastAPI response text: {response.text}")
             
-            if response.status_code == 200:
+            if response.status_code == 200 or response.status_code == 201:
                 result = response.json()
                 return {
                     "success": True,
@@ -177,11 +176,20 @@ def create_property_listing(
         user_context = _get_user_context_from_config(config)
         logger.info(f"Creating listing for user: {user_context['user_id']}")
         
+        # Get Supabase token from config
+        configurable = config.get("configurable", {})
+        supabase_token = configurable.get("x-supabase-access-token")
+        
+        if not supabase_token:
+            logger.error("No Supabase token found in config")
+            return "❌ Authentication token not found. Please log in again."
+        
         result = _run_async(_create_listing_with_auth(
             title=title, 
             address=address, 
             price=price,
             user_context=user_context,
+            supabase_token=supabase_token,
             bedrooms=bedrooms,
             bathrooms=bathrooms, 
             sqft=sqft,
