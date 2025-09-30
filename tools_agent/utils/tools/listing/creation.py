@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 # Configuration - Use your FastAPI backend
 API_BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
+#@tool
 def _get_user_context_from_config(config: Optional[RunnableConfig] = None) -> Dict[str, str]:
     """Extract user context from the RunnableConfig passed by LangGraph."""
     if not config:
@@ -45,6 +46,7 @@ def _get_user_context_from_config(config: Optional[RunnableConfig] = None) -> Di
         "user_email": user_email or "unknown@example.com"
     }
 
+#@tool
 async def _create_listing_with_auth(
     title: str,
     address: str,
